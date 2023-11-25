@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "ogre"
+version = "0.1.0"
+description = ""
+authors = ["trentzz <z.trent.w@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+click = "^8.1.7"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+ogre = "ogre.ogre:cli"
