@@ -73,18 +73,6 @@ CURRENT MEMORY POINTER: N
 > exit
 ```
 
-### Implementation Notes
-
-- `-v` option for verbose, showing every change
-- Step how memory values that either:
-	- Have been affected but the command at that step
-	- Have been affected at any point in time
-- Show:
-	- Show all memory values that have been affected
-
-### Debug Commands
-
-
 ## Start
 ```
 ogre start
