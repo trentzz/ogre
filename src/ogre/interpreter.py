@@ -2,22 +2,24 @@
 Brainfuck Interpreter.
 """
 
+from typing import Optional
+
 
 class Interpreter:
     """
     Brainfuck Interpreter.
     """
 
-    def __init__(self, bf_script: str = None):
+    def __init__(self):
         self.memory = [0] * 30000  # Initialize 30,000 memory cells
         self.memory_ptr = 0
 
-        self.bf_script = bf_script
+        self.bf_script = None
         self.bf_script_ptr = 0
 
     def add_script(self, bf_script: str):
         """Add Brainfuck script."""
-        self.bf_script = bf_script
+        self.bf_script = list(bf_script)
         self.bf_script_ptr = 0
 
     def interpret_script(self):
@@ -25,16 +27,13 @@ class Interpreter:
         Interpret a full Brainfuck script.
         """
         while self.bf_script_ptr < len(self.bf_script):
-            instruction = self.bf_script[self.bf_script_ptr]
-            self.interpret_instruction(instruction)
+            self.step()
 
-            self.memory_ptr += 1
-
-    def interpret_instruction(self, instruction: str):
+    def interpret_instruction(self, instruction: str) -> Optional[str]:
         """
         Interpret a single Brainfuck instruction.
         """
-        print(instruction)
+        # print(f"{instruction} ptr:{self.memory_ptr} val:{self.memory[self.memory_ptr]}")
 
         if instruction == ">":
             self.memory_ptr += 1
@@ -68,3 +67,8 @@ class Interpreter:
             print(chr(self.memory[self.memory_ptr]), end="")
         elif instruction == ",":
             self.memory[self.memory_ptr] = input()[0]
+
+    def step(self):
+        instruction = self.bf_script[self.bf_script_ptr]
+        self.interpret_instruction(instruction)
+        self.bf_script_ptr += 1

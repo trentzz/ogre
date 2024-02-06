@@ -9,9 +9,7 @@ from ogre.ogre_modes.ogre_mode import OgreMode
 class Start(OgreMode):
     def __init__(self, ogre):
         self.ogre = ogre
-        self.interpreter = Interpreter("")
-
-        self.run()
+        self.interpreter = Interpreter()
 
     def run(self):
         pass
