@@ -10,65 +10,67 @@ class Interpreter:
     Brainfuck Interpreter.
     """
 
-    def __init__(self):
-        self.memory = [0] * 30000  # Initialize 30,000 memory cells
-        self.memory_ptr = 0
+    def __init__(self, code):
+        self.data = [0] * 30000  # Initialize 30,000 memory cells
+        self.data_ptr = 0
+        self.code = code
+        self.code_ptr = 0
 
-        self.bf_script = None
-        self.bf_script_ptr = 0
+        self.loop_jumps = [None] * len(code)
+        self.precompile_loop_jumps()
 
-    def add_script(self, bf_script: str):
-        """Add Brainfuck script."""
-        self.bf_script = list(bf_script)
-        self.bf_script_ptr = 0
+    def precompile_loop_jumps(self):
+        if self.code is None:
+            return
 
-    def interpret_script(self):
+        loop_stack = []
+        for i, op in enumerate(self.code):
+            match op:
+                case "[":
+                    loop_stack.append(i)
+                case "]":
+                    self.loop_jumps[i] = loop_stack.pop()
+                    self.loop_jumps[self.loop_jumps[i]] = i
+
+    def run_code(self):
         """
         Interpret a full Brainfuck script.
         """
-        while self.bf_script_ptr < len(self.bf_script):
+        while self.code_ptr < len(self.code):
             self.step()
 
-    def interpret_instruction(self, instruction: str) -> Optional[str]:
+    def current_value(self):
+        """
+        Returns the current value at the data pointer
+        """
+        return self.data[self.data_ptr]
+
+    def run_instruction(self, instruction: str) -> Optional[str]:
         """
         Interpret a single Brainfuck instruction.
         """
         # print(f"{instruction} ptr:{self.memory_ptr} val:{self.memory[self.memory_ptr]}")
-
-        if instruction == ">":
-            self.memory_ptr += 1
-        elif instruction == "<":
-            self.memory_ptr -= 1
-        elif instruction == "+":
-            self.memory[self.memory_ptr] += 1
-        elif instruction == "-":
-            self.memory[self.memory_ptr] -= 1
-        elif instruction == "[":
-            if self.memory[self.memory_ptr] == 0:
-                loop_count = 1
-                while loop_count != 0:
-                    self.bf_script_ptr += 1
-                    if self.bf_script[self.bf_script_ptr] == "[":
-                        loop_count += 1
-                    elif self.bf_script[self.bf_script_ptr] == "]":
-                        loop_count -= 1
-            else:
-                pass
-        elif instruction == "]":
-            loop_count = 1
-            while loop_count != 0:
-                self.bf_script_ptr -= 1
-                if self.bf_script[self.bf_script_ptr] == "]":
-                    loop_count += 1
-                elif self.bf_script[self.bf_script_ptr] == "[":
-                    loop_count -= 1
-            self.bf_script_ptr -= 1
-        elif instruction == ".":
-            print(chr(self.memory[self.memory_ptr]), end="")
-        elif instruction == ",":
-            self.memory[self.memory_ptr] = input()[0]
+        match instruction:
+            case ">":
+                self.data_ptr += 1
+            case "<":
+                self.data_ptr -= 1
+            case "+":
+                self.data[self.data_ptr] += 1
+            case "-":
+                self.data[self.data_ptr] -= 1
+            case "[":
+                if self.current_value() == 0:
+                    self.code_ptr = self.loop_jumps[self.code_ptr]
+            case "]":
+                if self.data[self.data_ptr] != 0:
+                    self.code_ptr = self.loop_jumps[self.code_ptr]
+            case ".":
+                print(chr(self.data[self.data_ptr]), end="")
+            case ",":
+                self.data[self.data_ptr] = ord(input()[0])
 
     def step(self):
-        instruction = self.bf_script[self.bf_script_ptr]
-        self.interpret_instruction(instruction)
-        self.bf_script_ptr += 1
+        instruction = self.code[self.code_ptr]
+        self.run_instruction(instruction)
+        self.code_ptr += 1

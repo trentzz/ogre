@@ -3,12 +3,10 @@ WIP (ogre start): enters a real time interpreter environment.
 """
 
 from ogre.interpreter import Interpreter
-from ogre.ogre_modes.ogre_mode import OgreMode
 
 
-class Start(OgreMode):
-    def __init__(self, ogre):
-        self.ogre = ogre
+class Start:
+    def __init__(self):
         self.interpreter = Interpreter()
 
     def run(self):
