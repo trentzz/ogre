@@ -37,7 +37,7 @@ def ogre_format(args):
 
 
 def ogre_compile(args):
-    Compile(args.file, args.output)
+    Compile(args.file, args.output, args.keep)
 
 
 def main():
@@ -95,6 +95,9 @@ def main():
     parser_compile = subparsers.add_parser("compile", help="Compile brainfuck code")
     parser_compile.add_argument("file", type=str, help="File to compile")
     parser_compile.add_argument("-o", "--output", help="Output file")
+    parser_compile.add_argument(
+        "-k", "--keep", action="store_true", help="Keep generated c file"
+    )
     parser_compile.set_defaults(func=ogre_compile)
 
     # parsing

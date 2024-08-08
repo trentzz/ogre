@@ -24,10 +24,11 @@ pipx install ogre
 #### Compile
 
 Compiles a brainfuck script into a binary. This is done by code generating C
-code and compiling that.
+and compiling that.
 
 ```bash
 ogre compile <file> -o <output-file>
+./<output-file>
 ```
 
 ### Debug

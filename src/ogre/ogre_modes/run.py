@@ -20,4 +20,5 @@ class Run:
         with open(self.file, "r", encoding="utf-8") as file:
             code = file.read()
             interpreter = Interpreter(code)
+            interpreter.prerun_steps()
             interpreter.run_code()

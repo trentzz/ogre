@@ -1,5 +1,5 @@
 """
-Brainfuck Interpreter.
+Brainfuck core.
 """
 
 from typing import Optional
@@ -7,16 +7,20 @@ from typing import Optional
 
 class Interpreter:
     """
-    Brainfuck Interpreter.
+    Brainfuck core.
     """
 
-    def __init__(self, code):
+    def __init__(self, code: str = ""):
         self.data = [0] * 30000  # Initialize 30,000 memory cells
         self.data_ptr = 0
         self.code = code
         self.code_ptr = 0
 
         self.loop_jumps = [None] * len(code)
+
+        self.errors = ""
+
+    def prerun_steps(self):
         self.precompile_loop_jumps()
 
     def precompile_loop_jumps(self):
@@ -74,3 +78,15 @@ class Interpreter:
         instruction = self.code[self.code_ptr]
         self.run_instruction(instruction)
         self.code_ptr += 1
+
+    def validate(self):
+        """
+        Validate brainfuck code.
+        """
+        return True
+
+    def validate_instruction(self, instruction: str):
+        """
+        Validate an instruction.
+        """
+        return True
