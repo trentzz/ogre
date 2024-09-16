@@ -23,11 +23,11 @@ class CCodeGenerator(Interpreter):
         self.generated_c_code = dedent(
             """
         #include <stdio.h>
-    
+
         int main() {
             char array[30000] = {{0}};
             char *ptr = array;
-            
+
             """
         )
 
@@ -93,7 +93,7 @@ class Compile(OgreMode):
 
     def compile_c(self):
         captured_output = subprocess.run(
-            ["gcc", self.generated_c_file, "-o", self.output],
+            ["gcc", str(self.generated_c_file), "-o", str(self.output)],
             check=True,
             capture_output=True,
         )

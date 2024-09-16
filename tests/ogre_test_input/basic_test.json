@@ -1,0 +1,14 @@
+[
+    {
+        "name": "basic test 1",
+        "brainfuck": "tests/brainfuck_scripts/hello_world.bf",
+        "input": "",
+        "output": "Hello World!"
+    },
+    {
+        "name": "basic test 2",
+        "brainfuck": "tests/brainfuck_scripts/hello_world.bf",
+        "input": "",
+        "output": "Hello World!"
+    }
+]

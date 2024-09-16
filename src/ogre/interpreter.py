@@ -10,7 +10,7 @@ class Interpreter:
     Brainfuck core.
     """
 
-    def __init__(self, code: str = ""):
+    def __init__(self, code: str = "", input_: Optional[str] = None):
         self.data = [0] * 30000  # Initialize 30,000 memory cells
         self.data_ptr = 0
         self.code = code
@@ -19,6 +19,8 @@ class Interpreter:
         self.loop_jumps = [None] * len(code)
 
         self.errors = ""
+        
+        self.input = input_
 
     def prerun_steps(self):
         self.precompile_loop_jumps()

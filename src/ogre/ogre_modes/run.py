@@ -14,7 +14,6 @@ class Run:
 
     def __init__(self, file):
         self.file = file
-        self.run()
 
     def run(self):
         with open(self.file, "r", encoding="utf-8") as file:
