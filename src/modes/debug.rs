@@ -11,23 +11,9 @@ pub struct Debugger {
 }
 
 impl Debugger {
-    pub fn new(source: &str) -> Result<Self> {
-        Ok(Self {
-            interp: Interpreter::new(source)?,
-            breakpoints: HashSet::new(),
-        })
-    }
-
     pub fn new_live(source: &str) -> Result<Self> {
         Ok(Self {
             interp: Interpreter::with_live_stdin(source)?,
-            breakpoints: HashSet::new(),
-        })
-    }
-
-    pub fn with_input(source: &str, input: &str) -> Result<Self> {
-        Ok(Self {
-            interp: Interpreter::with_input(source, input)?,
             breakpoints: HashSet::new(),
         })
     }

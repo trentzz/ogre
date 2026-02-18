@@ -61,53 +61,15 @@ pub fn run_tests(test_file: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn run_test_cases(cases: &[TestCase]) -> Result<()> {
-    let total = cases.len();
-    let mut passed = 0usize;
-    let mut failed = 0usize;
-
-    for case in cases {
-        let source = fs::read_to_string(&case.brainfuck)
-            .map_err(|e| anyhow::anyhow!("Test '{}': failed to read '{}': {}", case.name, case.brainfuck, e))?;
-
-        match run_single_case(&source, &case.input, &case.output) {
-            Ok(true) => {
-                println!("PASS  {}", case.name);
-                passed += 1;
-            }
-            Ok(false) => {
-                println!("FAIL  {}", case.name);
-                failed += 1;
-            }
-            Err(e) => {
-                println!("FAIL  {} — {}", case.name, e);
-                failed += 1;
-            }
-        }
-    }
-
-    println!("\n{}/{} tests passed", passed, total);
-    if failed > 0 {
-        bail!("{} test(s) failed", failed);
-    }
-    Ok(())
-}
-
-/// Run a single test case in-memory (source code provided directly, not via file path).
-pub fn run_inline_case(source: &str, input: &str, expected_output: &str) -> Result<bool> {
-    run_single_case(source, input, expected_output)
-}
-
-fn run_single_case(source: &str, input: &str, expected_output: &str) -> Result<bool> {
-    let mut interp = Interpreter::with_input(source, input)?;
-    interp.run()?;
-    let actual = interp.output_as_string();
-    Ok(actual == expected_output)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn run_inline_case(source: &str, input: &str, expected_output: &str) -> Result<bool> {
+        let mut interp = Interpreter::with_input(source, input)?;
+        interp.run()?;
+        Ok(interp.output_as_string() == expected_output)
+    }
 
     #[test]
     fn test_inline_case_pass() {

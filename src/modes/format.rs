@@ -22,6 +22,10 @@ impl Default for FormatOptions {
 }
 
 pub fn format_source(code: &str, opts: &FormatOptions) -> Result<String> {
+    // label_functions is a brainfunct dialect feature (named function labels).
+    // It is not yet implemented; the flag is accepted but has no effect.
+    let _ = opts.label_functions;
+
     let mut lines: Vec<String> = vec![String::new()];
     let mut depth: usize = 0;
 
