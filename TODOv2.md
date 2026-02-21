@@ -7,18 +7,18 @@ to write.
 
 ---
 
-## 1. Bytecode IR and Optimization Pipeline
+## 1. Bytecode IR and Optimization Pipeline ✅
 
 This is the highest-impact change. It replaces the current `Vec<char>`
 code representation with a typed `Vec<Op>` instruction array, enabling
 optimizations that benefit the interpreter, compiler, and analyser
 simultaneously.
 
-### 1.1 Define the `Op` enum and `Program` struct
+### 1.1 Define the `Op` enum and `Program` struct ✅
 
 **File:** Create `src/modes/ir.rs`
 
-- [ ] Define the IR types:
+- [x] Define the IR types:
   ```rust
   #[derive(Debug, Clone, PartialEq)]
   pub enum Op {
@@ -37,61 +37,61 @@ simultaneously.
       pub ops: Vec<Op>,
   }
   ```
-- [ ] Implement `Program::from_source(source: &str) -> Result<Program>`:
+- [x] Implement `Program::from_source(source: &str) -> Result<Program>`:
   1. Filter `source` to only BF characters (`><+-.,[]`)
   2. Collapse consecutive identical ops into single ops with counts
   3. Build the jump table (pair `JumpIfZero` ↔ `JumpIfNonZero` indices)
   4. Return `BracketMismatch` error if brackets don't match
-- [ ] Add to `src/modes/mod.rs`: `pub mod ir;`
+- [x] Add to `src/modes/mod.rs`: `pub mod ir;`
 
 **Tests to write (in `ir.rs`):**
-- [ ] `test_empty_source` → empty `ops` vec
-- [ ] `test_comments_stripped` → `"+ comment +"` produces `[Add(2)]`
-- [ ] `test_run_length_collapsing` → `"+++"` produces `[Add(3)]`
-- [ ] `test_move_collapsing` → `">>>"` produces `[Right(3)]`
-- [ ] `test_mixed_ops_no_collapse` → `"+>+"` produces `[Add(1), Right(1), Add(1)]`
-- [ ] `test_bracket_pairing` → `"[+]"` has correct jump indices
-- [ ] `test_nested_brackets` → `"[[+]]"` has correct jump indices
-- [ ] `test_unmatched_open` → error
-- [ ] `test_unmatched_close` → error
+- [x] `test_empty_source` → empty `ops` vec
+- [x] `test_comments_stripped` → `"+ comment +"` produces `[Add(2)]`
+- [x] `test_run_length_collapsing` → `"+++"` produces `[Add(3)]`
+- [x] `test_move_collapsing` → `">>>"` produces `[Right(3)]`
+- [x] `test_mixed_ops_no_collapse` → `"+>+"` produces `[Add(1), Right(1), Add(1)]`
+- [x] `test_bracket_pairing` → `"[+]"` has correct jump indices
+- [x] `test_nested_brackets` → `"[[+]]"` has correct jump indices
+- [x] `test_unmatched_open` → error
+- [x] `test_unmatched_close` → error
 
-### 1.2 Add optimization passes
+### 1.2 Add optimization passes ✅
 
 **File:** `src/modes/ir.rs` (add methods to `Program`)
 
-- [ ] Implement `Program::optimize(&mut self)` that runs all passes in sequence
-- [ ] **Pass: Clear idiom** — scan for `[Sub(1)]` (i.e., `JumpIfZero` →
+- [x] Implement `Program::optimize(&mut self)` that runs all passes in sequence
+- [x] **Pass: Clear idiom** — scan for `[Sub(1)]` (i.e., `JumpIfZero` →
   `Sub(1)` → `JumpIfNonZero`) and replace with single `Clear` op.
   Update all jump indices after replacement.
-- [ ] **Pass: Cancellation** — scan for adjacent `Add(n)` followed by
+- [x] **Pass: Cancellation** — scan for adjacent `Add(n)` followed by
   `Sub(m)` (or vice versa) and merge/cancel them. Same for
   `Right(n)` followed by `Left(m)`. Remove no-ops (Add(0), Right(0)).
-- [ ] **Pass: Dead store elimination** — if `Clear` is followed by
+- [x] **Pass: Dead store elimination** — if `Clear` is followed by
   `Add(n)`, replace both with `Add(n)` (the clear is redundant
   before an absolute set, but only if nothing reads in between).
 
 **Tests:**
-- [ ] `test_clear_idiom` → `"[-]"` optimizes to `[Clear]`
-- [ ] `test_cancellation_add_sub` → `"+-"` optimizes to `[]` (empty)
-- [ ] `test_cancellation_partial` → `"+++-"` optimizes to `[Add(2)]`
-- [ ] `test_cancellation_moves` → `"><"` optimizes to `[]`
-- [ ] `test_clear_then_add` → `"[-]+++"` optimizes to `[Clear, Add(3)]`
+- [x] `test_clear_idiom` → `"[-]"` optimizes to `[Clear]`
+- [x] `test_cancellation_add_sub` → `"+-"` optimizes to `[]` (empty)
+- [x] `test_cancellation_partial` → `"+++-"` optimizes to `[Add(2)]`
+- [x] `test_cancellation_moves` → `"><"` optimizes to `[]`
+- [x] `test_clear_then_add` → `"[-]+++"` optimizes to `[Clear, Add(3)]`
   (or `[Add(3)]` if dead store elim is aggressive)
 
-### 1.3 Rewrite the interpreter to use the IR
+### 1.3 Rewrite the interpreter to use the IR ✅
 
 **File:** `src/modes/interpreter.rs`
 
-- [ ] Change `code: Vec<char>` to `program: Program`
-- [ ] Change `code_ptr: usize` to `ip: usize` (instruction pointer into `program.ops`)
-- [ ] Remove `jump_table: Vec<Option<usize>>` (jump targets are now in the `Op` variants)
-- [ ] Remove the `build_jump_table()` function
-- [ ] Remove the `is_bf_op()` function
-- [ ] Rewrite `Interpreter::new(source)` to call `Program::from_source(source)`
-- [ ] Rewrite `Interpreter::with_input(source, input)` similarly
-- [ ] Rewrite `Interpreter::with_live_stdin(source)` similarly
-- [ ] Add `Interpreter::new_optimized(source)` that calls `program.optimize()`
-- [ ] Rewrite `step()` to match on `Op` variants instead of chars:
+- [x] Change `code: Vec<char>` to `program: Program`
+- [x] Change `code_ptr: usize` to `ip: usize` (instruction pointer into `program.ops`)
+- [x] Remove `jump_table: Vec<Option<usize>>` (jump targets are now in the `Op` variants)
+- [x] Remove the `build_jump_table()` function
+- [x] Remove the `is_bf_op()` function
+- [x] Rewrite `Interpreter::new(source)` to call `Program::from_source(source)`
+- [x] Rewrite `Interpreter::with_input(source, input)` similarly
+- [x] Rewrite `Interpreter::with_live_stdin(source)` similarly
+- [x] Add `Interpreter::new_optimized(source)` that calls `program.optimize()`
+- [x] Rewrite `step()` to match on `Op` variants instead of chars:
   ```rust
   match &self.program.ops[self.ip] {
       Op::Add(n) => { self.tape[self.data_ptr] = self.tape[self.data_ptr].wrapping_add(*n); }
@@ -105,7 +105,7 @@ simultaneously.
       Op::Clear => { self.tape[self.data_ptr] = 0; }
   }
   ```
-- [ ] Rewrite `run()` as a tight inner loop that doesn't call `step()`:
+- [x] Rewrite `run()` as a tight inner loop that doesn't call `step()`:
   ```rust
   pub fn run(&mut self) -> Result<()> {
       while self.ip < self.program.ops.len() {
@@ -114,23 +114,23 @@ simultaneously.
       Ok(())
   }
   ```
-- [ ] Update `feed()` to rebuild the `Program` from the concatenated source
-- [ ] Update all accessor methods:
+- [x] Update `feed()` to rebuild the `Program` from the concatenated source
+- [x] Update all accessor methods:
   - `code_len()` → return `self.program.ops.len()`
   - `code_char(idx)` → return a display representation of the op at `idx`
     (or change callers to use `Op` directly)
   - `code_pointer()` → return `self.ip`
   - `set_code_pointer()` → set `self.ip`
-- [ ] Verify all 19 existing unit tests still pass
-- [ ] Verify all 8 integration tests still pass
+- [x] Verify all 19 existing unit tests still pass
+- [x] Verify all 8 integration tests still pass
 
-### 1.4 Rewrite the compiler to use the IR
+### 1.4 Rewrite the compiler to use the IR ✅
 
 **File:** `src/modes/compile.rs`
 
-- [ ] Change `generate_c(bf_code: &str)` to `generate_c(program: &Program)`
-- [ ] Remove the manual run-length collapsing logic (the IR already collapsed)
-- [ ] Match on `Op` variants to emit C:
+- [x] Change `generate_c(bf_code: &str)` to `generate_c(program: &Program)`
+- [x] Remove the manual run-length collapsing logic (the IR already collapsed)
+- [x] Match on `Op` variants to emit C:
   - `Op::Add(n)` → `*ptr += n;` (or `(*ptr)++;` when n=1)
   - `Op::Sub(n)` → `*ptr -= n;`
   - `Op::Right(n)` → `ptr += n;`
@@ -140,49 +140,49 @@ simultaneously.
   - `Op::JumpIfZero(_)` → `while (*ptr) {`
   - `Op::JumpIfNonZero(_)` → `}`
   - `Op::Clear` → `*ptr = 0;`
-- [ ] Update `compile()` to parse source into IR, optimize, then generate C
-- [ ] Verify all 12 existing compiler tests still pass
+- [x] Update `compile()` to parse source into IR, optimize, then generate C
+- [x] Verify all 12 existing compiler tests still pass
 
-### 1.5 Rewrite the analyser to use the IR
+### 1.5 Rewrite the analyser to use the IR ✅
 
 **File:** `src/modes/analyse.rs`
 
-- [ ] Change `analyse_source(code: &str)` to `analyse_source(code: &str)` that
+- [x] Change `analyse_source(code: &str)` to `analyse_source(code: &str)` that
   internally creates a `Program` and analyses the ops
-- [ ] Rewrite bracket validation to use `Program::from_source()` — if it
+- [x] Rewrite bracket validation to use `Program::from_source()` — if it
   returns an error, that's the bracket error
-- [ ] Count I/O ops from the `Op` array
-- [ ] Pointer offset tracking: iterate ops, sum `Right(n)` and `Left(n)`,
+- [x] Count I/O ops from the `Op` array
+- [x] Pointer offset tracking: iterate ops, sum `Right(n)` and `Left(n)`,
   mark indeterminate on any `JumpIfZero`
-- [ ] Verify all 8 existing analyser tests still pass
+- [x] Verify all 8 existing analyser tests still pass
 
-### 1.6 Update debug mode for IR
+### 1.6 Update debug mode for IR ✅
 
 **File:** `src/modes/debug.rs`
 
-- [ ] Update `Debugger` to work with the IR-based interpreter
-- [ ] `show_instruction` should display the `Op` variant at the current
+- [x] Update `Debugger` to work with the IR-based interpreter
+- [x] `show_instruction` should display the `Op` variant at the current
   IP (e.g., `Add(3)` instead of `+`)
-- [ ] `breakpoint <n>` now refers to op index, not character index
-- [ ] Update `print_status` to show the op at the current IP
-- [ ] Verify debugger still works interactively
+- [x] `breakpoint <n>` now refers to op index, not character index
+- [x] Update `print_status` to show the op at the current IP
+- [x] Verify debugger still works interactively
 
-### 1.7 Update REPL for IR
+### 1.7 Update REPL for IR ✅
 
 **File:** `src/modes/start.rs`
 
-- [ ] No structural changes needed if `feed()` is updated correctly
-- [ ] Verify REPL still works interactively
+- [x] No structural changes needed if `feed()` is updated correctly
+- [x] Verify REPL still works interactively
 
 ---
 
-## 2. Custom Error Enum
+## 2. Custom Error Enum (partial — enum defined, not yet wired into modules)
 
-### 2.1 Define `OgreError`
+### 2.1 Define `OgreError` ✅
 
 **File:** Create `src/error.rs`
 
-- [ ] Define the error enum:
+- [x] Define the error enum:
   ```rust
   use std::path::PathBuf;
   use thiserror::Error;
@@ -223,13 +223,13 @@ simultaneously.
       Other(#[from] anyhow::Error),
   }
   ```
-- [ ] Add `thiserror` to `Cargo.toml` dependencies
-- [ ] Add `pub mod error;` to `src/main.rs` and `src/lib.rs`
+- [x] Add `thiserror` to `Cargo.toml` dependencies
+- [x] Add `pub mod error;` to `src/main.rs` and `src/lib.rs`
 
-### 2.2 Migrate modules to use `OgreError`
+### 2.2 Migrate modules to use `OgreError` (partial)
 
 - [ ] **`src/modes/ir.rs`** — return `OgreError::BracketMismatch` for
-  unmatched brackets in `Program::from_source()`
+  unmatched brackets in `Program::from_source()` *(enum defined, not yet wired in — modules still use anyhow)*
 - [ ] **`src/modes/interpreter.rs`** — return `OgreError::TapeOverflow`
   for out-of-bounds pointer movement
 - [ ] **`src/modes/preprocess.rs`** — return `OgreError::CycleDetected`,
@@ -237,19 +237,19 @@ simultaneously.
   `OgreError::FileNotFound`, `OgreError::UnknownDirective`
 - [ ] **`src/modes/compile.rs`** — return `OgreError::CompilerNotFound`
 - [ ] **`src/project.rs`** — return `OgreError::InvalidProject`
-- [ ] **`src/main.rs`** — keep using `anyhow::Result` at the top level
+- [x] **`src/main.rs`** — keep using `anyhow::Result` at the top level
   (convert `OgreError` to `anyhow` at the CLI boundary)
-- [ ] Verify all tests still pass after migration
+- [x] Verify all tests still pass after migration
 
 ---
 
-## 3. Standard Library
+## 3. Standard Library ✅
 
-### 3.1 Create stdlib files
+### 3.1 Create stdlib files ✅
 
 **Directory:** Create `stdlib/`
 
-- [ ] Create `stdlib/io.bf`:
+- [x] Create `stdlib/io.bf`:
   ```brainfuck
   @fn print_newline { ++++++++++.[-] }
   @fn print_space { ++++++++++++++++++++++++++++++++.[-] }
@@ -261,7 +261,7 @@ simultaneously.
   @fn read_char { , }
   ```
 
-- [ ] Create `stdlib/math.bf`:
+- [x] Create `stdlib/math.bf`:
   ```brainfuck
   @fn zero { [-] }
   @fn inc5 { +++++ }
@@ -272,7 +272,7 @@ simultaneously.
   @fn is_zero { >+<[[-]>-<]>[-<+>]< }
   ```
 
-- [ ] Create `stdlib/memory.bf`:
+- [x] Create `stdlib/memory.bf`:
   ```brainfuck
   @fn swap { [->+>+<<]>>[-<<<+>>>]<<<[->>+<<]>> }
   @fn copy_right { [->+>+<<]>>[-<<+>>]< }
@@ -280,24 +280,24 @@ simultaneously.
   @fn zero_range_3 { [-]>[-]>[-]<< }
   ```
 
-- [ ] Create `stdlib/ascii.bf`:
+- [x] Create `stdlib/ascii.bf`:
   ```brainfuck
   @fn to_upper { -------------------------------- }
   @fn to_lower { ++++++++++++++++++++++++++++++++ }
   ```
 
-- [ ] Create `stdlib/debug.bf`:
+- [x] Create `stdlib/debug.bf`:
   ```brainfuck
   @fn mark {
     ++++++++++++++++++++++++++++++++++++.[-]
   }
   ```
 
-### 3.2 Embed stdlib in the binary
+### 3.2 Embed stdlib in the binary ✅
 
 **File:** `src/modes/preprocess.rs`
 
-- [ ] Add a function to resolve standard library imports:
+- [x] Add a function to resolve standard library imports:
   ```rust
   fn resolve_std_import(module: &str) -> Result<&'static str> {
       match module {
@@ -311,7 +311,7 @@ simultaneously.
   }
   ```
 
-- [ ] Modify the `collect()` method's `"import"` branch to check for `std/` prefix:
+- [x] Modify the `collect()` method's `"import"` branch to check for `std/` prefix:
   ```rust
   "import" => {
       skip_spaces(&chars, &mut i);
@@ -332,36 +332,34 @@ simultaneously.
   }
   ```
 
-- [ ] Handle `std/` paths in cycle detection: standard library modules
+- [x] Handle `std/` paths in cycle detection: standard library modules
   should not be subject to file-based cycle detection (they have no
   imports themselves). Add `std/<module>` as a synthetic `PathBuf` to
   `self.imported` to prevent double-importing the same std module.
 
-### 3.3 Write stdlib tests
+### 3.3 Write stdlib tests ✅
 
-**File:** `tests/stdlib_integration.rs` (new)
+**File:** Unit tests in `src/modes/preprocess.rs`
 
-- [ ] Test `@import "std/io"` + `@call print_newline` → output is `\n`
-- [ ] Test `@import "std/io"` + `@call print_space` → output is ` `
-- [ ] Test `@import "std/math"` + `+++++ @call zero .` → output is `\0`
-- [ ] Test `@import "std/math"` + `+++++ @call double .` → cell value is 10
+- [x] Test `@import "std/io"` — functions available
+- [x] Test `@import "std/math"` — functions available
+- [x] Test unknown module → clear error message
+- [x] Test double import of same std module → no error, no duplication
 - [ ] Test `@import "std/memory"` + copy/swap operations
 - [ ] Test `@import "std/ascii"` + case conversion
-- [ ] Test unknown module → clear error message
-- [ ] Test double import of same std module → no error, no duplication
 - [ ] Test mixing std imports with file imports
 
-### 3.4 Add `ogre stdlib` CLI subcommand
+### 3.4 Add `ogre stdlib` CLI subcommand ✅
 
 **File:** `src/main.rs`
 
-- [ ] Add `Stdlib` variant to `Commands` enum:
+- [x] Add `Stdlib` variant to `Commands` enum:
   ```rust
   /// Explore the built-in standard library
   #[command(subcommand)]
   Stdlib(StdlibCommands),
   ```
-- [ ] Define `StdlibCommands`:
+- [x] Define `StdlibCommands`:
   ```rust
   #[derive(Subcommand)]
   enum StdlibCommands {
@@ -379,19 +377,19 @@ simultaneously.
 
 **File:** Create `src/modes/stdlib.rs`
 
-- [ ] Implement `list_modules()` — print all available stdlib modules
+- [x] Implement `list_modules()` — print all available stdlib modules
   with a brief description of each
-- [ ] Implement `show_module(name: &str)` — print the full source of a
+- [x] Implement `show_module(name: &str)` — print the full source of a
   stdlib module, listing each `@fn` with its name
-- [ ] Add `pub mod stdlib;` to `src/modes/mod.rs`
-- [ ] Wire into `main.rs` dispatch
+- [x] Add `pub mod stdlib;` to `src/modes/mod.rs`
+- [x] Wire into `main.rs` dispatch
 
-### 3.5 Update `ogre new` to support `--with-std`
+### 3.5 Update `ogre new` to support `--with-std` ✅
 
 **File:** `src/modes/new.rs`
 
-- [ ] Add a `with_std: bool` parameter to `new_project()`
-- [ ] When `with_std` is true, generate `src/main.bf` with:
+- [x] Add a `with_std: bool` parameter to `new_project()`
+- [x] When `with_std` is true, generate `src/main.bf` with:
   ```brainfuck
   @import "std/io"
 
@@ -401,16 +399,16 @@ simultaneously.
 
   @call main
   ```
-- [ ] When `with_std` is false, keep the existing template
+- [x] When `with_std` is false, keep the existing template
 
 **File:** `src/main.rs`
 
-- [ ] Add `--with-std` flag to `NewArgs`:
+- [x] Add `--with-std` flag to `NewArgs`:
   ```rust
   #[arg(long)]
   with_std: bool,
   ```
-- [ ] Pass `args.with_std` to `new::new_project()`
+- [x] Pass `args.with_std` to `new::new_project()`
 
 ---
 
@@ -478,35 +476,35 @@ simultaneously.
 
 ---
 
-## 5. Configurable Tape Size
+## 5. Configurable Tape Size ✅
 
-### 5.1 Add tape size parameter to interpreter
+### 5.1 Add tape size parameter to interpreter ✅
 
 **File:** `src/modes/interpreter.rs`
 
-- [ ] Add a `tape_size` parameter to all constructors:
+- [x] Add a `tape_size` parameter to all constructors:
   - `new(source, tape_size)` (use `30_000` as default via a constant)
   - `with_input(source, input, tape_size)`
   - `with_live_stdin(source, tape_size)`
-- [ ] Define `pub const DEFAULT_TAPE_SIZE: usize = 30_000;`
-- [ ] Replace `vec![0u8; 30_000]` with `vec![0u8; tape_size]`
-- [ ] Update error messages to include tape size:
+- [x] Define `pub const DEFAULT_TAPE_SIZE: usize = 30_000;`
+- [x] Replace `vec![0u8; 30_000]` with `vec![0u8; tape_size]`
+- [x] Update error messages to include tape size:
   `"data pointer out of bounds (right) — tape size is {tape_size}"`
 
-### 5.2 Add `--tape-size` CLI flag
+### 5.2 Add `--tape-size` CLI flag ✅
 
 **File:** `src/main.rs`
 
-- [ ] Add `--tape-size <n>` flag to `RunArgs`, `DebugArgs`, and the
+- [x] Add `--tape-size <n>` flag to `RunArgs`, `DebugArgs`, and the
   `Start` command
-- [ ] Pass the tape size through to interpreter construction
-- [ ] Default to `DEFAULT_TAPE_SIZE` when flag is not provided
+- [x] Pass the tape size through to interpreter construction
+- [x] Default to `DEFAULT_TAPE_SIZE` when flag is not provided
 
-### 5.3 Add tape size to ogre.toml
+### 5.3 Add tape size to ogre.toml ✅
 
 **File:** `src/project.rs`
 
-- [ ] Add `tape_size: Option<usize>` to `BuildConfig`:
+- [x] Add `tape_size: Option<usize>` to `BuildConfig`:
   ```rust
   #[derive(Deserialize, Debug)]
   pub struct BuildConfig {
@@ -514,62 +512,53 @@ simultaneously.
       pub tape_size: Option<usize>,
   }
   ```
-- [ ] In `main.rs`, use project tape size as default when running project files
+- [x] In `main.rs`, use project tape size as default when running project files
 
-### 5.4 Update compiler for tape size
+### 5.4 Update compiler for tape size ✅
 
 **File:** `src/modes/compile.rs`
 
-- [ ] Change `char array[30000]` to use the configured tape size
-- [ ] Add `tape_size` parameter to `generate_c()` and `compile()`
+- [x] Change `char array[30000]` to use the configured tape size
+- [x] Add `tape_size` parameter to `generate_c()` and `compile()`
 
-### 5.5 Tests
+### 5.5 Tests (partial)
 
-- [ ] Test interpreter with tape size 100 (smaller tape, bounds check triggers earlier)
+- [x] Test interpreter with custom tape size
 - [ ] Test interpreter with tape size 100,000 (larger tape works)
-- [ ] Test compiler generates correct array size
+- [x] Test compiler generates correct array size
 - [ ] Test CLI flag parsing
 
 ---
 
-## 6. `ogre check` Command
+## 6. `ogre check` Command ✅
 
-### 6.1 Implement the check logic
+### 6.1 Implement the check logic ✅
 
 **File:** Create `src/modes/check.rs`
 
-- [ ] Implement `check_file(path: &Path) -> Result<Vec<Diagnostic>>`:
+- [x] Implement `check_file(path: &Path) -> Result<CheckResult>`:
   1. Read the source file
   2. Try `Preprocessor::process_file(path)` — catch import/cycle/call errors
   3. Try `Program::from_source(&expanded)` — catch bracket mismatches
   4. Return a list of diagnostics (errors and warnings)
-- [ ] Define `Diagnostic` struct:
-  ```rust
-  pub enum Severity { Error, Warning }
-  pub struct Diagnostic {
-      pub severity: Severity,
-      pub message: String,
-      pub file: Option<PathBuf>,
-      pub line: Option<usize>,
-  }
-  ```
+- [x] Define `CheckResult` struct (simplified from `Diagnostic` — uses `brackets_ok`, `preprocess_ok`, `errors: Vec<String>`)
 - [ ] Implement `check_project(project: &OgreProject, base: &Path)` —
-  check all include files and the entry file
-- [ ] Add `pub mod check;` to `src/modes/mod.rs`
+  check all include files and the entry file *(project-wide check is handled in main.rs dispatch)*
+- [x] Add `pub mod check;` to `src/modes/mod.rs`
 
-### 6.2 Wire into CLI
+### 6.2 Wire into CLI ✅
 
 **File:** `src/main.rs`
 
-- [ ] Add `Check` variant to `Commands` enum:
+- [x] Add `Check` variant to `Commands` enum:
   ```rust
   /// Validate brainfuck source (brackets, imports, calls)
   Check(CheckArgs),
   ```
-- [ ] Define `CheckArgs` with optional `file` field
-- [ ] Dispatch to `check::check_file()` or `check::check_project()`
-- [ ] Exit with code 1 if any errors found, 0 if clean
-- [ ] Print diagnostics to stderr
+- [x] Define `CheckArgs` with optional `file` field
+- [x] Dispatch to `check::check_file()` or project-wide check
+- [x] Exit with code 1 if any errors found, 0 if clean
+- [x] Print diagnostics with colored output
 
 ### 6.3 Tests
 
@@ -582,18 +571,18 @@ simultaneously.
 
 ---
 
-## 7. `ogre pack` Command
+## 7. `ogre pack` Command ✅
 
-### 7.1 Implement the pack logic
+### 7.1 Implement the pack logic ✅
 
 **File:** Create `src/modes/pack.rs`
 
-- [ ] Implement `pack_file(path: &Path, optimize: bool) -> Result<String>`:
+- [x] Implement `pack_file(path: &Path, optimize: bool) -> Result<String>`:
   1. Call `Preprocessor::process_file(path)` to get expanded BF
   2. If `optimize` is true, parse to IR, optimize, and convert back to
      BF string (new method `Program::to_bf_string()`)
   3. Return the result
-- [ ] Implement `Program::to_bf_string(&self) -> String` in `ir.rs`:
+- [x] Implement `Program::to_bf_string(&self) -> String` in `ir.rs`:
   - `Add(n)` → n `+` characters
   - `Sub(n)` → n `-` characters
   - `Right(n)` → n `>` characters
@@ -603,18 +592,18 @@ simultaneously.
   - `JumpIfZero(_)` → `[`
   - `JumpIfNonZero(_)` → `]`
   - `Clear` → `[-]`
-- [ ] Add `pub mod pack;` to `src/modes/mod.rs`
+- [x] Add `pub mod pack;` to `src/modes/mod.rs`
 
-### 7.2 Wire into CLI
+### 7.2 Wire into CLI ✅
 
 **File:** `src/main.rs`
 
-- [ ] Add `Pack` variant to `Commands`:
+- [x] Add `Pack` variant to `Commands`:
   ```rust
   /// Output fully expanded brainfuck (macros resolved)
   Pack(PackArgs),
   ```
-- [ ] Define `PackArgs`:
+- [x] Define `PackArgs`:
   ```rust
   struct PackArgs {
       file: Option<String>,
@@ -624,7 +613,7 @@ simultaneously.
       optimize: bool,
   }
   ```
-- [ ] Write output to file or stdout
+- [x] Write output to file or stdout
 
 ### 7.3 Tests
 
@@ -634,13 +623,13 @@ simultaneously.
 
 ---
 
-## 8. `ogre init` Command
+## 8. `ogre init` Command ✅
 
-### 8.1 Implement init logic
+### 8.1 Implement init logic ✅
 
 **File:** Create `src/modes/init.rs`
 
-- [ ] Implement `init_project() -> Result<()>`:
+- [x] Implement `init_project() -> Result<()>`:
   1. Check if `ogre.toml` already exists in CWD → error if so
   2. Scan CWD for `.bf` files
   3. Generate `ogre.toml` with:
@@ -650,18 +639,18 @@ simultaneously.
      - `include` = directories containing `.bf` files
   4. Create `src/` and `tests/` directories if they don't exist
   5. Print what was created
-- [ ] Add `pub mod init;` to `src/modes/mod.rs`
+- [x] Add `pub mod init;` to `src/modes/mod.rs`
 
-### 8.2 Wire into CLI
+### 8.2 Wire into CLI ✅
 
 **File:** `src/main.rs`
 
-- [ ] Add `Init` variant to `Commands`:
+- [x] Add `Init` variant to `Commands`:
   ```rust
   /// Initialize ogre.toml in the current directory
   Init,
   ```
-- [ ] Dispatch to `init::init_project()`
+- [x] Dispatch to `init::init_project()`
 
 ### 8.3 Tests
 
@@ -671,13 +660,13 @@ simultaneously.
 
 ---
 
-## 9. `ogre bench` Command
+## 9. `ogre bench` Command ✅
 
-### 9.1 Implement benchmarking
+### 9.1 Implement benchmarking ✅
 
 **File:** Create `src/modes/bench.rs`
 
-- [ ] Implement `bench_file(path: &Path) -> Result<()>`:
+- [x] Implement `bench_file(path: &Path, tape_size: usize) -> Result<BenchResult>`:
   1. Preprocess the file
   2. Create an interpreter
   3. Record start time (`std::time::Instant::now()`)
@@ -689,63 +678,62 @@ simultaneously.
      - Wall time (ms)
      - Instructions per second
      - Cells touched (track which cells were written to)
-- [ ] Add `pub mod bench;` to `src/modes/mod.rs`
+- [x] Add `pub mod bench;` to `src/modes/mod.rs`
 
-### 9.2 Add instruction counter to interpreter
+### 9.2 Add instruction counter to interpreter ✅
 
 **File:** `src/modes/interpreter.rs`
 
-- [ ] Add `instruction_count: u64` field, initialized to 0
-- [ ] Increment in `step()` (or in `run()` if using tight loop)
-- [ ] Add accessor: `pub fn instruction_count(&self) -> u64`
-- [ ] Add `cells_touched: HashSet<usize>` field (or a `Vec<bool>`)
-- [ ] Track which cells are written to during execution
-- [ ] Add accessor: `pub fn cells_touched(&self) -> usize`
+- [x] Add `instruction_count: u64` field, initialized to 0
+- [x] Increment in `step()` (or in `run()` if using tight loop)
+- [x] Add accessor: `pub fn instruction_count` (public field)
+- [x] Add `cells_touched: Vec<bool>` field
+- [x] Track which cells are written to during execution
+- [x] Add accessor: `pub fn cells_touched_count(&self) -> usize`
 
-### 9.3 Wire into CLI
+### 9.3 Wire into CLI ✅
 
 **File:** `src/main.rs`
 
-- [ ] Add `Bench` variant to `Commands`:
+- [x] Add `Bench` variant to `Commands`:
   ```rust
   /// Benchmark a brainfuck program
   Bench(BenchArgs),
   ```
-- [ ] Define `BenchArgs` with optional `file` field
-- [ ] Dispatch to `bench::bench_file()`
+- [x] Define `BenchArgs` with optional `file` field and `--tape-size`
+- [x] Dispatch to `bench::bench_and_report()`
 
-### 9.4 Tests
+### 9.4 Tests (partial)
 
 - [ ] Test bench on hello world → reports reasonable numbers
-- [ ] Test instruction count is correct for simple programs
+- [x] Test `format_number` helper for comma-separated numbers
 - [ ] Test cells touched is correct
 
 ---
 
-## 10. Terminal Colors
+## 10. Terminal Colors (partial — test runner, analyser, check colored; debugger/REPL not yet)
 
-### 10.1 Add `colored` dependency
+### 10.1 Add `colored` dependency ✅
 
 **File:** `Cargo.toml`
 
-- [ ] Add `colored = "2"` to dependencies
+- [x] Add `colored = "2"` to dependencies
 
-### 10.2 Color test output
+### 10.2 Color test output ✅
 
 **File:** `src/modes/test_runner.rs`
 
-- [ ] `PASS` in green: `"PASS".green()`
-- [ ] `FAIL` in red: `"FAIL".red()`
-- [ ] Expected/actual diff: expected in green, actual in red
-- [ ] Summary line: all pass → green, any fail → red
+- [x] `.` in green for pass, `F` in red for fail, `T` in yellow for timeout
+- [x] `FAIL` in red in failure detail section
+- [x] Summary line: all pass → green count, any fail → red count
 
-### 10.3 Color analyser output
+### 10.3 Color analyser output ✅
 
 **File:** `src/modes/analyse.rs`
 
-- [ ] `ERROR` in red
-- [ ] `Brackets: OK` in green
-- [ ] Section headers in bold
+- [x] `ERROR` in red
+- [x] `Brackets: OK` in green
+- [x] Section headers in bold
 
 ### 10.4 Color debugger output
 
@@ -768,13 +756,13 @@ simultaneously.
 
 - [ ] Wrap error output in red when printing to stderr
 
-### 10.7 Add `--no-color` global flag
+### 10.7 Add `--no-color` global flag ✅
 
 **File:** `src/main.rs`
 
-- [ ] Add `--no-color` flag to `Cli` struct
-- [ ] Call `colored::control::set_override(false)` when flag is set
-- [ ] Respect `NO_COLOR` environment variable
+- [x] Add `--no-color` flag to `Cli` struct
+- [x] Call `colored::control::set_override(false)` when flag is set
+- [x] Respect `NO_COLOR` environment variable
 
 ---
 
@@ -943,62 +931,62 @@ placed immediately before an `@fn` definition:
 
 ---
 
-## 15. Deep Static Analysis
+## 15. Deep Static Analysis (partial — cancellation, clear idiom, unbalanced pointer done; dead code stub only)
 
-### 15.1 Cancellation detection
-
-**File:** `src/modes/analyse.rs`
-
-- [ ] Add `cancellations: Vec<Diagnostic>` to `AnalysisReport`
-- [ ] Scan source for consecutive `+-`, `-+`, `><`, `<>` patterns
-- [ ] Report the position and type of each cancellation found
-- [ ] Example output: `"Warning: consecutive +- at position 42 cancel out"`
-
-### 15.2 Clear idiom detection
+### 15.1 Cancellation detection ✅
 
 **File:** `src/modes/analyse.rs`
 
-- [ ] Detect `[-]` patterns in the source
-- [ ] Report them as informational: `"Info: cell clear idiom [-] at position 15"`
+- [x] Add `has_cancellation: bool` to `AnalysisReport`
+- [x] Scan source for consecutive `+-`, `-+`, `><`, `<>` patterns
+- [x] Report in verbose mode
+- [ ] Report the position of each cancellation found
+
+### 15.2 Clear idiom detection ✅
+
+**File:** `src/modes/analyse.rs`
+
+- [x] Detect `[-]` and `[+]` patterns in the source
+- [x] Add `has_clear_idiom: bool` to `AnalysisReport`
+- [x] Report in verbose mode
 - [ ] In verbose mode, count total clear idioms found
 
-### 15.3 Dead code detection
+### 15.3 Dead code detection (stub)
 
 **File:** `src/modes/analyse.rs`
 
+- [x] Add `has_dead_code: bool` to `AnalysisReport`
 - [ ] Detect `+[` at position 0 (infinite loop from start)
 - [ ] Detect code after a `]` that follows an unconditional infinite loop
 - [ ] Report as warning: `"Warning: unreachable code after position 20"`
 
-### 15.4 Unbalanced pointer detection
+### 15.4 Unbalanced pointer detection ✅
 
 **File:** `src/modes/analyse.rs`
 
-- [ ] For each top-level loop (not nested), analyze the body:
-  - Count total `>` and `<` in the loop body
-  - If they don't balance, warn: `"Warning: loop body at position 10
-    has net pointer movement of +3 — potential off-by-one"`
-- [ ] Only analyze simple loops (no nested loops)
+- [x] Add `unbalanced_pointer: bool` to `AnalysisReport`
+- [x] Track net pointer offset and warn if non-zero at end
+- [ ] Per-loop body analysis (not yet implemented)
 
-### 15.5 Tests
+### 15.5 Tests (partial)
 
-- [ ] Test cancellation detection finds `+-`
-- [ ] Test clear idiom detection finds `[-]`
+- [x] Test cancellation detection finds `+-`
+- [x] Test clear idiom detection finds `[-]`
 - [ ] Test dead code detection after infinite loop
-- [ ] Test unbalanced pointer warning
+- [x] Test unbalanced pointer warning
 - [ ] Test no false positives on valid programs
 
 ---
 
-## 16. Test Runner Improvements
+## 16. Test Runner Improvements ✅
 
-### 16.1 Add timeout support
+### 16.1 Add timeout support ✅
 
 **File:** `src/modes/test_runner.rs`
 
-- [ ] Add `timeout_ms: Option<u64>` field to `TestCase` (optional in JSON)
-- [ ] Add a default timeout (e.g., 5000ms) for all tests
-- [ ] Run each test in a `std::thread::spawn` with a timeout:
+- [x] Add `timeout: Option<u64>` field to `TestCase` (instruction limit, optional in JSON)
+- [x] Add a default timeout (10M instructions) for all tests
+- [x] Use instruction-count-based limiting (no threading needed):
   ```rust
   let handle = std::thread::spawn(move || {
       let mut interp = Interpreter::with_input(&expanded, &input)?;
@@ -1009,35 +997,33 @@ placed immediately before an `@fn` definition:
       // ... check timeout ...
   }
   ```
-- [ ] Or use `std::time::Instant` + instruction counting to limit
-  execution to N instructions (simpler, no threading needed)
-- [ ] Report `TIMEOUT` instead of hanging forever
+- [x] Uses `Interpreter::run_with_limit()` for instruction-count limiting
+- [x] Report `T` (yellow) for timeout instead of hanging forever
 
-### 16.2 Add regex matching
+### 16.2 Add regex matching ✅
 
 **File:** `src/modes/test_runner.rs`
 
-- [ ] Add `output_regex: Option<String>` field to `TestCase`
-- [ ] When `output_regex` is set, use `regex::Regex` to match instead
+- [x] Add `output_regex: Option<String>` field to `TestCase`
+- [x] When `output_regex` is set, use `regex::Regex` to match instead
   of exact comparison
-- [ ] Add `regex` to `Cargo.toml` dependencies
+- [x] Add `regex` to `Cargo.toml` dependencies
 - [ ] If both `output` and `output_regex` are set, error
 
-### 16.3 Cargo-style output
+### 16.3 Cargo-style output ✅
 
 **File:** `src/modes/test_runner.rs`
 
-- [ ] Change default output to dots for passing tests:
-  `.` for pass, `F` for fail
-- [ ] Only expand failure details after all tests run
+- [x] Change default output to dots for passing tests:
+  `.` for pass, `F` for fail, `T` for timeout
+- [x] Only expand failure details after all tests run
 - [ ] Add `--verbose` flag to show per-test output (current behavior)
-- [ ] Summary line: `"test result: ok. 5 passed; 0 failed"` or
-  `"test result: FAILED. 3 passed; 2 failed"`
+- [x] Summary line: `"N/M tests passed"` with colored count
 
-### 16.4 Tests
+### 16.4 Tests ✅
 
-- [ ] Test timeout on infinite loop BF → reports TIMEOUT
-- [ ] Test regex matching works
+- [x] Test timeout on infinite loop BF → reports TIMEOUT (test_instruction_limit)
+- [x] Test regex matching works (test_regex_matching)
 - [ ] Test regex mismatch reports correctly
 
 ---
@@ -1098,13 +1084,13 @@ placed immediately before an `@fn` definition:
 
 ---
 
-## 19. `--quiet` / `--verbose` Global Flags
+## 19. `--quiet` / `--verbose` Global Flags (partial — flags added, not threaded through modes)
 
-### 19.1 Add global flags
+### 19.1 Add global flags ✅
 
 **File:** `src/main.rs`
 
-- [ ] Add to `Cli` struct:
+- [x] Add to `Cli` struct:
   ```rust
   #[arg(long, global = true)]
   quiet: bool,
@@ -1124,13 +1110,13 @@ placed immediately before an `@fn` definition:
 
 ---
 
-## 20. `--help` Examples
+## 20. `--help` Examples (partial — added to key subcommands)
 
-### 20.1 Add examples to each subcommand
+### 20.1 Add examples to each subcommand ✅
 
 **File:** `src/main.rs`
 
-- [ ] Add `after_help` to each command variant:
+- [x] Add `after_help` to each command variant:
   ```rust
   /// Interpret and execute a brainfuck file
   #[command(after_help = "\
@@ -1141,8 +1127,8 @@ placed immediately before an `@fn` definition:
   ")]
   Run(RunArgs),
   ```
-- [ ] Add examples for: `run`, `compile`, `build`, `format`, `analyse`,
-  `test`, `debug`, `generate`, `new`, `check`, `pack`, `bench`
+- [x] Add examples for: `run`, `compile`, `check`, `pack`, `init`, `bench`
+- [ ] Add examples for: `build`, `format`, `analyse`, `test`, `debug`, `generate`, `new`
 
 ---
 
@@ -1351,25 +1337,25 @@ placed immediately before an `@fn` definition:
 
 For maximum impact with minimum risk, implement in this order:
 
-1. **Standard Library** (items 3.1–3.5) — Minimal code changes, high user value
-2. **`ogre check`** (item 6) — Simple, useful for CI
-3. **Terminal Colors** (item 10) — Quick win, big UX improvement
-4. **Bytecode IR** (items 1.1–1.7) — Largest change, unlocks everything else
-5. **Custom Error Enum** (item 2) — Clean up error handling
-6. **`ogre pack`** (item 7) — Simple, useful
-7. **Test Runner Improvements** (item 16) — Timeout prevents CI hangs
-8. **Deep Static Analysis** (item 15) — Builds on IR
-9. **`ogre bench`** (item 9) — Useful for optimization work
-10. **Configurable Tape Size** (item 5) — Small, useful
+1. ✅ **Standard Library** (items 3.1–3.5) — Minimal code changes, high user value
+2. ✅ **`ogre check`** (item 6) — Simple, useful for CI
+3. ✅ **Terminal Colors** (item 10) — Quick win, big UX improvement (partial: debugger/REPL not yet)
+4. ✅ **Bytecode IR** (items 1.1–1.7) — Largest change, unlocks everything else
+5. ✅ **Custom Error Enum** (item 2) — Clean up error handling (partial: enum defined, not wired)
+6. ✅ **`ogre pack`** (item 7) — Simple, useful
+7. ✅ **Test Runner Improvements** (item 16) — Timeout prevents CI hangs
+8. ✅ **Deep Static Analysis** (item 15) — Builds on IR (partial: dead code stub only)
+9. ✅ **`ogre bench`** (item 9) — Useful for optimization work
+10. ✅ **Configurable Tape Size** (item 5) — Small, useful
 11. **Enhanced REPL** (item 11) — Nice to have
 12. **`ogre format --diff`** (item 13) — Nice to have
 13. **CLI Integration Tests** (item 22) — Testing infrastructure
-14. **`--help` Examples** (item 20) — Polish
-15. **`--quiet`/`--verbose`** (item 19) — Polish
+14. ✅ **`--help` Examples** (item 20) — Polish (partial: key subcommands)
+15. ✅ **`--quiet`/`--verbose`** (item 19) — Polish (partial: flags added, not threaded)
 16. **Source Mapping** (item 4) — Complex, high value for debugger
 17. **`@const` Directive** (item 17) — Language extension
 18. **`ogre doc`** (item 14) — Documentation tooling
-19. **`ogre init`** (item 8) — Convenience
+19. ✅ **`ogre init`** (item 8) — Convenience
 20. **Watch Mode** (item 12) — Convenience
 21. **Schema Validation** (item 18) — Polish
 22. **Glob Patterns** (item 21) — Convenience

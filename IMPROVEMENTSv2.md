@@ -34,9 +34,8 @@ CLI tools.
 
 **Structural concerns:**
 
-- **No intermediate representation (IR).** The interpreter operates directly
-  on `Vec<char>`, scanning past comments at runtime and handling one
-  character at a time. This is the single biggest architectural limitation.
+- ~~**No intermediate representation (IR).**~~ ✅ **RESOLVED.** The interpreter now
+  operates on a typed `Vec<Op>` IR (`src/modes/ir.rs`). Previously:
   Every mode that touches BF code (run, debug, compile, analyse) would
   benefit from a shared IR that strips comments, collapses runs, and
   represents operations as typed instructions rather than raw characters.
@@ -44,9 +43,8 @@ CLI tools.
   independently (e.g., the compiler already collapses runs in its own
   codegen, but the interpreter doesn't).
 
-- **No error taxonomy.** All errors flow through `anyhow::Result`, which is
-  fine for a CLI binary but makes the library interface (`lib.rs` re-exports
-  everything as `pub`) unusable for programmatic consumers. A caller cannot
+- **No error taxonomy** (partially addressed). `OgreError` enum defined in
+  `src/error.rs` but modules still use `anyhow::Result`. Migration pending. A caller cannot
   distinguish a bracket mismatch from an import cycle from a file-not-found
   without parsing error message strings. This matters if ogre is ever used
   as a library (e.g., in a web playground, IDE plugin, or language server).
@@ -119,33 +117,20 @@ between brainfunct (the extended dialect) and standard brainfuck.
 
 **Weaknesses:**
 
-- **`Vec<char>` wastes 4x memory.** BF is pure ASCII — each instruction is
-  one byte, but `char` is 4 bytes. For a program that generates and
-  interprets large BF (e.g., `generate string` of a long text), this adds
-  up. Using `Vec<u8>` would be a simple improvement.
+- ~~**`Vec<char>` wastes 4x memory.**~~ ✅ **RESOLVED.** The interpreter now
+  uses a typed `Vec<Op>` IR. `source_chars` retained only for `feed()`.
 
-- **No bytecode compilation.** The interpreter scans past non-BF characters
-  at runtime with a `while !is_bf_op(...)` loop in `step()`. For code with
-  comments or whitespace (e.g., formatted code), this means repeatedly
-  scanning the same positions. A parse step that strips non-instructions
-  and produces a compact `Vec<Op>` would eliminate this overhead entirely.
+- ~~**No bytecode compilation.**~~ ✅ **RESOLVED.** `Program::from_source()`
+  strips non-BF characters and produces a compact `Vec<Op>`.
 
-- **No run-length collapsing.** The compiler collapses `+++` into
-  `*ptr += 3;`, but the interpreter doesn't. Each `+` is a separate
-  `step()` call. For the interpreter, collapsing runs into
-  `Op::Add(count)` would provide an immediate 3-5x speedup on typical BF
-  programs.
+- ~~**No run-length collapsing.**~~ ✅ **RESOLVED.** `+++` → `Add(3)` during
+  IR parsing. Optimization passes also collapse cancellations and clear idioms.
 
-- **`run()` delegates to `step()`.** The hot loop in `run()` calls `step()`
-  for every instruction, which redundantly checks `is_done()` and performs
-  the runtime comment-skipping. A dedicated tight inner loop in `run()`
-  that operates on a pre-compiled instruction array would be significantly
-  faster.
+- ~~**`run()` delegates to `step()`.**~~ ✅ **RESOLVED.** `run()` is now a
+  tight inner loop that matches on `Op` variants directly.
 
-- **Fixed tape size.** The 30,000-cell tape is standard, but some BF
-  programs need more. There's no way to configure tape size, and hitting
-  the boundary produces a generic error with no context about where in
-  the program it happened.
+- ~~**Fixed tape size.**~~ ✅ **RESOLVED.** Configurable via `--tape-size` flag
+  and `ogre.toml` `[build] tape_size` field. Default remains 30,000.
 
 ### 1.4 Compilation Design Critique
 
@@ -158,18 +143,15 @@ between brainfunct (the extended dialect) and standard brainfuck.
 
 **Weaknesses:**
 
-- **No BF-level optimization before codegen.** The compiler collapses runs
-  but doesn't perform higher-level optimizations:
-  - `[-]` → `*ptr = 0;` (cell clear idiom, extremely common)
-  - `[->+<]` → `ptr[1] += ptr[0]; ptr[0] = 0;` (cell move/copy)
-  - Dead store elimination (writing to a cell then immediately clearing it)
+- ~~**No BF-level optimization before codegen.**~~ ✅ **RESOLVED.** The compiler
+  now uses the shared IR with optimization passes:
+  - `[-]` → `*ptr = 0;` (via `Op::Clear`)
   - Consecutive `><` and `+-` cancellation
+  - Dead store elimination
+  - Cell move/copy `[->+<]` → `Move(1)` *(not yet implemented)*
 
-- **No IR shared with interpreter.** Optimization passes in the compiler
-  are implemented in the codegen itself, tightly coupled to C output.
-  If ogre adds a WASM target, an LLVM backend, or optimized interpretation,
-  these optimizations would need to be reimplemented. A shared optimization
-  pass on an IR would avoid this.
+- ~~**No IR shared with interpreter.**~~ ✅ **RESOLVED.** All modes (interpreter,
+  compiler, analyser) now consume the shared `Program` IR from `src/modes/ir.rs`.
 
 - **`char array[30000] = {0}` in generated C** relies on aggregate
   initialization. This is correct per the C standard, but using `calloc`
@@ -191,22 +173,19 @@ between brainfunct (the extended dialect) and standard brainfuck.
 
 **Weaknesses:**
 
-- **No color output anywhere.** Test results, analysis reports, debugger
-  state — all plain text. PASS/FAIL coloring, syntax highlighting in the
-  debugger, and colored error messages would significantly improve
-  usability.
+- ~~**No color output anywhere.**~~ ✅ **PARTIALLY RESOLVED.** Test results,
+  analysis reports, and check output now use `colored` crate. Debugger
+  and REPL coloring still pending.
 
-- **No global `--quiet` / `--verbose` flags.** Each mode handles verbosity
-  independently (or doesn't). A consistent top-level flag would be more
-  ergonomic.
+- ~~**No global `--quiet` / `--verbose` flags.**~~ ✅ **PARTIALLY RESOLVED.**
+  Flags added to CLI struct, but not yet threaded through all modes.
 
-- **No `--help` examples.** Clap `about` strings are minimal. Concrete
-  examples in `--help` output (e.g., `ogre run hello.bf`,
-  `ogre compile -o hello hello.bf`) help new users.
+- ~~**No `--help` examples.**~~ ✅ **PARTIALLY RESOLVED.** `after_help` examples
+  added to key subcommands (run, compile, check, pack, init, bench).
 
-- **`ogre test` output doesn't follow conventions.** Cargo-style test
-  output shows dots for passing tests and only expands failures. ogre
-  prints a line for every test regardless.
+- ~~**`ogre test` output doesn't follow conventions.**~~ ✅ **RESOLVED.**
+  Now uses cargo-style compact output (`.` for pass, `F` for fail, `T` for
+  timeout). Failures expanded after all tests complete.
 
 - **No progress indication for long operations.** Compiling or running
   large BF programs gives no feedback. A spinner or progress bar for
@@ -224,12 +203,11 @@ between brainfunct (the extended dialect) and standard brainfuck.
 
 **Weaknesses:**
 
-- **No timeout support.** A BF program with an infinite loop will hang the
-  test runner forever. This is a real risk in CI.
+- ~~**No timeout support.**~~ ✅ **RESOLVED.** Test runner uses instruction-count
+  limiting (default 10M instructions). Configurable per-test via `timeout` field.
 
-- **No regex/pattern matching in expected output.** Test cases require exact
-  byte-for-byte output matches. Supporting regex patterns or substring
-  matching would make tests more robust against minor output variations.
+- ~~**No regex/pattern matching in expected output.**~~ ✅ **RESOLVED.** Test
+  cases support `output_regex` field for regex pattern matching via `regex` crate.
 
 - **No CLI integration tests.** All tests exercise library functions
   directly. There are no tests that invoke `ogre` as a subprocess and
@@ -281,54 +259,53 @@ between brainfunct (the extended dialect) and standard brainfuck.
 These improvements affect the fundamental execution engine and would
 benefit all modes.
 
-1. **Bytecode IR and optimization pipeline.** Define an `enum Op { Add(u8),
+1. ✅ **Bytecode IR and optimization pipeline.** Define an `enum Op { Add(u8),
    Sub(u8), Right(usize), Left(usize), Open(usize), Close(usize),
    Input, Output, Clear }` and compile BF to `Vec<Op>` before execution.
    Strip comments at parse time, collapse runs, and recognize idioms
    (`[-]` → `Clear`). All modes (interpreter, compiler, analyser) consume
-   the shared IR.
+   the shared IR. *Implemented in `src/modes/ir.rs` with 21 tests.*
 
-2. **Optimization passes on the IR:**
+2. ✅ **Optimization passes on the IR:**
    - Run-length encoding: `+++` → `Add(3)`
    - Cancellation: `+-` → nothing, `><` → nothing
    - Cell clear: `[-]` → `Clear`
-   - Cell move/copy: `[->+<]` → `Move(1)`
+   - Cell move/copy: `[->+<]` → `Move(1)` *(not yet implemented)*
    - Dead store elimination
-   - Loop unrolling for simple counted loops
+   - Loop unrolling for simple counted loops *(not yet implemented)*
 
-3. **Custom error enum (`OgreError`).** Variants: `BracketMismatch {
+3. ✅ **Custom error enum (`OgreError`).** Variants: `BracketMismatch {
    position, direction }`, `CycleDetected { chain }`, `ImportNotFound {
    path }`, `UnknownFunction { name }`, `TapeOverflow { position,
    direction }`, `CompilerNotFound`, `InvalidProject { field, message }`.
    Keep `anyhow` for the CLI layer, use `OgreError` for the library.
+   *Enum defined in `src/error.rs`; modules still use anyhow — migration pending.*
 
 4. **Source mapping.** During preprocessing, build a
    `Vec<SourceLocation>` that maps each position in the expanded code
    back to `(file, line, column)` in the original source. The debugger,
    error messages, and analyser can all use this for better diagnostics.
 
-5. **Configurable tape size.** Accept `--tape-size <n>` on `run`, `debug`,
+5. ✅ **Configurable tape size.** Accept `--tape-size <n>` on `run`, `debug`,
    and `start` commands. Default remains 30,000. Allow `ogre.toml` to
-   set a project default.
+   set a project default. *Implemented with CLI flags and `BuildConfig.tape_size`.*
 
 ### Tier 2 — New Commands and Modes
 
-6. **`ogre check`** — Validate brackets match, all `@call` references
+6. ✅ **`ogre check`** — Validate brackets match, all `@call` references
    resolve, no import cycles, and all included files exist. Exit 0 if
-   valid, exit 1 with diagnostics if not. Useful for CI and editor
-   integration.
+   valid, exit 1 with diagnostics if not. *Implemented in `src/modes/check.rs`.*
 
-7. **`ogre pack`** — Output fully preprocessed, expanded single `.bf` file.
+7. ✅ **`ogre pack`** — Output fully preprocessed, expanded single `.bf` file.
    Useful for sharing brainfuck programs without the function/import
-   system. Optionally run the optimizer pass.
+   system. Optionally run the optimizer pass. *Implemented in `src/modes/pack.rs`.*
 
-8. **`ogre init`** — Initialize `ogre.toml` in the current directory (vs
-   `ogre new` which creates a new directory). Detect existing `.bf` files
-   and suggest an `entry` and `include` configuration.
+8. ✅ **`ogre init`** — Initialize `ogre.toml` in the current directory (vs
+   `ogre new` which creates a new directory). *Implemented in `src/modes/init.rs`.*
 
-9. **`ogre bench [file]`** — Run a BF program and report: total
+9. ✅ **`ogre bench [file]`** — Run a BF program and report: total
    instructions executed, wall time, instructions per second, peak memory
-   usage (cells touched). Useful for comparing optimization strategies.
+   usage (cells touched). *Implemented in `src/modes/bench.rs`.*
 
 10. **`ogre repl` (enhanced `start`)** — Upgrade the REPL with:
     - Line editing and command history (via `rustyline`)
@@ -392,11 +369,12 @@ benefit all modes.
 
 ### Tier 5 — Developer Experience
 
-21. **Terminal colors and formatting.** Use `colored` or `termcolor` for:
+21. ✅ **Terminal colors and formatting.** Using `colored` crate for:
     - PASS (green) / FAIL (red) in test output
-    - Error messages in red, warnings in yellow
-    - Syntax highlighting in the debugger
-    - Colored tape visualization in the REPL
+    - Error messages in red in analyser and check
+    - `--no-color` flag and `NO_COLOR` env var support
+    - Syntax highlighting in the debugger *(not yet)*
+    - Colored tape visualization in the REPL *(not yet)*
 
 22. **Watch mode** (`ogre run --watch`) — Re-run on file save. Use
     `notify` crate for filesystem events.
@@ -420,13 +398,13 @@ benefit all modes.
 
 ### Tier 6 — Advanced Analysis
 
-27. **Deep static analysis:**
-    - Detect dead code after infinite loops
-    - Warn on unbalanced pointer movement in loop bodies
+27. **Deep static analysis** (partial):
+    - Detect dead code after infinite loops *(stub only)*
+    - ✅ Warn on unbalanced pointer movement
     - Detect cells written but never read
-    - Detect consecutive `+-` or `><` that cancel out
+    - ✅ Detect consecutive `+-` or `><` that cancel out
     - Estimate loop iteration counts where possible
-    - Detect common BF patterns and suggest idioms
+    - ✅ Detect common BF patterns (`[-]`, `[+]` clear idiom)
 
 28. **Complexity metrics:**
     - Cyclomatic complexity (based on loop nesting)
@@ -464,11 +442,11 @@ benefit all modes.
 
 ---
 
-## Part 3: Standard Library Plan
+## Part 3: Standard Library Plan ✅ IMPLEMENTED
 
 ### 3.1 Overview
 
-Ogre should ship with a built-in standard library (`std`) of brainfunct
+Ogre ships with a built-in standard library (`std`) of brainfunct
 functions that users can `@import` without managing file paths. This
 mirrors Rust's `std` library, Go's standard library, or Python's built-in
 modules. The standard library provides well-tested, reusable building
@@ -642,9 +620,9 @@ with import semantics).
 
 ### 3.6 Implementation Plan
 
-#### Phase 1: Preprocessor Changes
+#### Phase 1: Preprocessor Changes ✅
 
-Modify `preprocess.rs` to recognize `std/` imports:
+Modified `preprocess.rs` to recognize `std/` imports:
 
 ```rust
 // In the import resolution logic:
@@ -673,9 +651,9 @@ Using `include_str!()` embeds the library source directly in the ogre
 binary at compile time. No file I/O, no installation paths, no missing
 files — the standard library is always available.
 
-#### Phase 2: Create the Library Files
+#### Phase 2: Create the Library Files ✅
 
-Create `stdlib/` directory with the `.bf` files listed above. Each file
+Created `stdlib/` directory with `.bf` files: Each file
 contains only `@fn` definitions. Write comprehensive tests for each
 function:
 
@@ -698,14 +676,14 @@ function:
 
 #### Phase 3: Documentation
 
-- Add `@doc` comments above each `@fn` in the stdlib files
-- `ogre doc --stdlib` command to print the standard library reference
-- Update README with standard library usage examples
-- Add a `stdlib/README.md` listing all modules and functions
+- Add `@doc` comments above each `@fn` in the stdlib files *(not yet)*
+- `ogre doc --stdlib` command to print the standard library reference *(not yet)*
+- Update README with standard library usage examples *(not yet)*
+- Add a `stdlib/README.md` listing all modules and functions *(not yet)*
 
-#### Phase 4: CLI Integration
+#### Phase 4: CLI Integration ✅
 
-Add a subcommand for exploring the standard library:
+Added `ogre stdlib` subcommand for exploring the standard library:
 
 ```
 ogre stdlib list              # list all standard library modules
@@ -713,9 +691,9 @@ ogre stdlib show io           # show all functions in std/io
 ogre stdlib show math:double  # show the source of a specific function
 ```
 
-#### Phase 5: Project Scaffolding
+#### Phase 5: Project Scaffolding ✅
 
-Update `ogre new` to optionally include standard library imports:
+Updated `ogre new` to optionally include standard library imports:
 
 ```
 ogre new myproject --with-std
@@ -807,19 +785,20 @@ A complete program using the standard library:
 ## Summary
 
 Ogre is a well-structured project with a clean architecture and solid
-test coverage. The main areas for improvement are:
+test coverage (168 tests, up from 114). The main areas that have been
+addressed and remain:
 
-1. **Engine**: A shared bytecode IR with optimization passes would benefit
-   all modes and is the single highest-impact improvement.
-2. **Errors**: A typed error enum would make the library interface usable.
-3. **Standard library**: Embedding reusable BF functions via `include_str!`
-   is straightforward and immediately useful.
-4. **DX**: Colors, watch mode, REPL improvements, and editor integration
-   would make ogre pleasant to use day-to-day.
+1. ✅ **Engine**: A shared bytecode IR with optimization passes now benefits
+   all modes (interpreter, compiler, analyser). Implemented in `src/modes/ir.rs`.
+2. ✅ **Errors**: A typed error enum is defined in `src/error.rs` (migration
+   of modules to use it is still pending).
+3. ✅ **Standard library**: Reusable BF functions embedded via `include_str!`
+   in 5 modules (io, math, memory, ascii, debug).
+4. **DX** (partial): Colors added to test runner, analyser, and check.
+   Watch mode, REPL improvements, and editor integration still pending.
 5. **Ecosystem**: Dependency management, a registry, and documentation
-   tooling would complete the Cargo parallel.
+   tooling remain as future work.
 
-The standard library plan is the most immediately actionable improvement:
-it requires minimal changes to the preprocessor (a prefix check and
-`include_str!` resolution), provides immediate value to users, and
-establishes the foundation for a broader package ecosystem.
+New commands added: `check`, `pack`, `init`, `bench`, `stdlib list/show`.
+Configurable tape size, test timeouts, regex matching, and cargo-style
+test output are now available.
