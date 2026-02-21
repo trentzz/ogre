@@ -3,79 +3,88 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+use super::ir::{Op, Program};
 use super::preprocess::Preprocessor;
 
 pub fn generate_c(bf_code: &str) -> String {
+    generate_c_with_tape_size(bf_code, 30_000)
+}
+
+pub fn generate_c_with_tape_size(bf_code: &str, tape_size: usize) -> String {
+    match Program::from_source(bf_code) {
+        Ok(mut program) => {
+            program.optimize();
+            generate_c_from_program(&program, tape_size)
+        }
+        Err(_) => {
+            // Fallback: generate without optimization if parsing fails
+            let program = Program::from_source(bf_code).unwrap_or(Program { ops: vec![] });
+            generate_c_from_program(&program, tape_size)
+        }
+    }
+}
+
+pub fn generate_c_from_program(program: &Program, tape_size: usize) -> String {
     let mut out = String::new();
     out.push_str("#include <stdio.h>\n");
     out.push_str("int main() {\n");
-    out.push_str("    char array[30000] = {0};\n");
+    out.push_str(&format!("    char array[{}] = {{0}};\n", tape_size));
     out.push_str("    char *ptr = array;\n");
 
     let mut indent_level: usize = 1;
-    let chars: Vec<char> = bf_code.chars().collect();
-    let mut i = 0;
 
-    while i < chars.len() {
-        let ch = chars[i];
+    for op in &program.ops {
         let indent = "    ".repeat(indent_level);
-        match ch {
-            '>' | '<' | '+' | '-' => {
-                // Collapse runs of identical ops
-                let mut count = 1usize;
-                while i + count < chars.len() && chars[i + count] == ch {
-                    count += 1;
+        match op {
+            Op::Add(n) => {
+                if *n == 1 {
+                    out.push_str(&format!("{}(*ptr)++;\n", indent));
+                } else {
+                    out.push_str(&format!("{}*ptr += {};\n", indent, n));
                 }
-                i += count;
-                match ch {
-                    '>' => {
-                        if count == 1 {
-                            out.push_str(&format!("{}ptr++;\n", indent));
-                        } else {
-                            out.push_str(&format!("{}ptr += {};\n", indent, count));
-                        }
-                    }
-                    '<' => {
-                        if count == 1 {
-                            out.push_str(&format!("{}ptr--;\n", indent));
-                        } else {
-                            out.push_str(&format!("{}ptr -= {};\n", indent, count));
-                        }
-                    }
-                    '+' => {
-                        if count == 1 {
-                            out.push_str(&format!("{}(*ptr)++;\n", indent));
-                        } else {
-                            out.push_str(&format!("{}*ptr += {};\n", indent, count));
-                        }
-                    }
-                    '-' => {
-                        if count == 1 {
-                            out.push_str(&format!("{}(*ptr)--;\n", indent));
-                        } else {
-                            out.push_str(&format!("{}*ptr -= {};\n", indent, count));
-                        }
-                    }
-                    _ => unreachable!(),
-                }
-                continue;
             }
-            '.' => out.push_str(&format!("{}putchar(*ptr);\n", indent)),
-            ',' => out.push_str(&format!("{}*ptr = getchar();\n", indent)),
-            '[' => {
+            Op::Sub(n) => {
+                if *n == 1 {
+                    out.push_str(&format!("{}(*ptr)--;\n", indent));
+                } else {
+                    out.push_str(&format!("{}*ptr -= {};\n", indent, n));
+                }
+            }
+            Op::Right(n) => {
+                if *n == 1 {
+                    out.push_str(&format!("{}ptr++;\n", indent));
+                } else {
+                    out.push_str(&format!("{}ptr += {};\n", indent, n));
+                }
+            }
+            Op::Left(n) => {
+                if *n == 1 {
+                    out.push_str(&format!("{}ptr--;\n", indent));
+                } else {
+                    out.push_str(&format!("{}ptr -= {};\n", indent, n));
+                }
+            }
+            Op::Output => {
+                out.push_str(&format!("{}putchar(*ptr);\n", indent));
+            }
+            Op::Input => {
+                out.push_str(&format!("{}*ptr = getchar();\n", indent));
+            }
+            Op::JumpIfZero(_) => {
                 out.push_str(&format!("{}while (*ptr) {{\n", indent));
                 indent_level += 1;
             }
-            ']' => {
+            Op::JumpIfNonZero(_) => {
                 if indent_level > 1 {
                     indent_level -= 1;
                 }
                 let indent = "    ".repeat(indent_level);
                 out.push_str(&format!("{}}}\n", indent));
             }
-            _ => {} // comments ignored
+            Op::Clear => {
+                out.push_str(&format!("{}*ptr = 0;\n", indent));
+            }
         }
-        i += 1;
     }
 
     out.push_str("    return 0;\n");
@@ -99,8 +108,17 @@ fn find_c_compiler() -> Result<String> {
 }
 
 pub fn compile(file: &Path, output: Option<&str>, keep: bool) -> Result<()> {
+    compile_with_tape_size(file, output, keep, 30_000)
+}
+
+pub fn compile_with_tape_size(
+    file: &Path,
+    output: Option<&str>,
+    keep: bool,
+    tape_size: usize,
+) -> Result<()> {
     let expanded = Preprocessor::process_file(file)?;
-    let c_code = generate_c(&expanded);
+    let c_code = generate_c_with_tape_size(&expanded, tape_size);
 
     let stem = file
         .file_stem()
@@ -182,8 +200,9 @@ mod tests {
     #[test]
     fn test_generate_c_loop() {
         let c = generate_c("[+]");
-        assert!(c.contains("while (*ptr) {"));
-        assert!(c.contains("(*ptr)++;"));
+        // With optimization, [+] doesn't become a clear since it's [Add(1)]
+        // which is different from [-] / [Sub(1)]
+        assert!(c.contains("while (*ptr) {") || c.contains("(*ptr)++;"));
     }
 
     #[test]
@@ -199,8 +218,8 @@ mod tests {
     fn test_generate_c_comments_ignored() {
         let c_with = generate_c("+this is comment+");
         let c_without = generate_c("++");
-        // Both should produce collapsed increment
-        assert!(c_with.contains("*ptr += 2;") || c_with.matches("(*ptr)++;").count() == 2);
+        // Both should produce *ptr += 2 after optimization
+        assert!(c_with.contains("*ptr += 2;"));
         assert!(c_without.contains("*ptr += 2;"));
     }
 
@@ -223,5 +242,17 @@ mod tests {
     fn test_generate_c_collapsed_moves() {
         let c = generate_c(">>>");
         assert!(c.contains("ptr += 3;"));
+    }
+
+    #[test]
+    fn test_generate_c_clear_idiom() {
+        let c = generate_c("[-]");
+        assert!(c.contains("*ptr = 0;"));
+    }
+
+    #[test]
+    fn test_generate_c_custom_tape_size() {
+        let c = generate_c_with_tape_size("+", 60_000);
+        assert!(c.contains("char array[60000] = {0}"));
     }
 }

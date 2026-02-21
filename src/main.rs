@@ -1,21 +1,40 @@
+#![allow(dead_code)]
+
 use anyhow::{bail, Result};
 use clap::{Args, Parser, Subcommand};
+use colored::control::set_override;
 use std::path::Path;
 use std::process;
 
 mod modes;
 mod project;
 
-use modes::{analyse, compile, debug, format, generate, new, run, start, test_runner};
+use modes::{
+    analyse, bench, check, compile, debug, format, generate, init, new, pack, run, start, stdlib,
+    test_runner,
+};
 use project::OgreProject;
 
 #[derive(Parser)]
 #[command(
     name = "ogre",
     about = "A Cargo-like all-in-one brainfuck tool",
-    version
+    version,
+    after_help = "Examples:\n  ogre run hello.bf\n  ogre compile hello.bf -o hello\n  ogre new myproject\n  ogre test tests/basic.json\n  ogre generate string \"Hello!\" -o hello.bf"
 )]
 struct Cli {
+    /// Disable colored output
+    #[arg(long, global = true)]
+    no_color: bool,
+
+    /// Suppress non-essential output
+    #[arg(long, short = 'q', global = true)]
+    quiet: bool,
+
+    /// Enable verbose output
+    #[arg(long, short = 'v', global = true)]
+    verbose: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -23,13 +42,15 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Interpret and execute a brainfuck file (or project entry if omitted)
+    #[command(after_help = "Examples:\n  ogre run hello.bf\n  ogre run --tape-size 60000 big.bf")]
     Run(RunArgs),
     /// Compile brainfuck to a native binary via C
+    #[command(after_help = "Examples:\n  ogre compile hello.bf -o hello\n  ogre compile hello.bf --keep")]
     Compile(CompileArgs),
     /// Build the current project (requires ogre.toml)
     Build(BuildArgs),
     /// Interactive brainfuck interpreter REPL
-    Start,
+    Start(StartArgs),
     /// GDB-style interactive debugger
     Debug(DebugArgs),
     /// Format a brainfuck file in-place (or all project files if omitted)
@@ -43,6 +64,21 @@ enum Commands {
     /// Generate brainfuck code for common patterns
     #[command(subcommand)]
     Generate(GenerateCommands),
+    /// Browse the built-in standard library
+    #[command(subcommand)]
+    Stdlib(StdlibCommands),
+    /// Validate brackets, imports, and calls (exit 0 if OK, 1 if errors)
+    #[command(after_help = "Examples:\n  ogre check hello.bf\n  ogre check  # checks all project files")]
+    Check(CheckArgs),
+    /// Output fully preprocessed and expanded brainfuck
+    #[command(after_help = "Examples:\n  ogre pack hello.bf\n  ogre pack hello.bf --optimize -o packed.bf")]
+    Pack(PackArgs),
+    /// Initialize ogre.toml in the current directory
+    #[command(after_help = "Example:\n  cd myproject && ogre init")]
+    Init,
+    /// Benchmark a brainfuck program (instruction count, wall time, cells touched)
+    #[command(after_help = "Examples:\n  ogre bench hello.bf\n  ogre bench --tape-size 60000 big.bf")]
+    Bench(BenchArgs),
 }
 
 // ---- Per-subcommand arg structs ----
@@ -51,6 +87,9 @@ enum Commands {
 struct RunArgs {
     /// Path to the brainfuck file (uses project entry if omitted)
     file: Option<String>,
+    /// Tape size (number of cells, default 30000)
+    #[arg(long)]
+    tape_size: Option<usize>,
 }
 
 #[derive(Args)]
@@ -76,9 +115,19 @@ struct BuildArgs {
 }
 
 #[derive(Args)]
+struct StartArgs {
+    /// Tape size (number of cells, default 30000)
+    #[arg(long)]
+    tape_size: Option<usize>,
+}
+
+#[derive(Args)]
 struct DebugArgs {
     /// Path to the brainfuck file (uses project entry if omitted)
     file: Option<String>,
+    /// Tape size (number of cells, default 30000)
+    #[arg(long)]
+    tape_size: Option<usize>,
 }
 
 #[derive(Args)]
@@ -127,6 +176,9 @@ struct TestArgs {
 struct NewArgs {
     /// Project name / directory to create
     name: String,
+    /// Include standard library imports in the starter file
+    #[arg(long)]
+    with_std: bool,
 }
 
 #[derive(Subcommand)]
@@ -137,6 +189,47 @@ enum GenerateCommands {
     String(GenerateStringArgs),
     /// Generate a loop scaffold that runs n times
     Loop(GenerateLoopArgs),
+}
+
+#[derive(Args)]
+struct CheckArgs {
+    /// Path to the brainfuck file (checks all project files if omitted)
+    file: Option<String>,
+}
+
+#[derive(Args)]
+struct PackArgs {
+    /// Path to the brainfuck file (uses project entry if omitted)
+    file: Option<String>,
+    /// Output file (prints to stdout if omitted)
+    #[arg(short = 'o', long)]
+    output: Option<String>,
+    /// Apply IR optimizations to the output
+    #[arg(long)]
+    optimize: bool,
+}
+
+#[derive(Args)]
+struct BenchArgs {
+    /// Path to the brainfuck file (uses project entry if omitted)
+    file: Option<String>,
+    /// Tape size (number of cells, default 30000)
+    #[arg(long)]
+    tape_size: Option<usize>,
+}
+
+#[derive(Subcommand)]
+enum StdlibCommands {
+    /// List all available standard library modules
+    List,
+    /// Show the source of a standard library module
+    Show(StdlibShowArgs),
+}
+
+#[derive(Args)]
+struct StdlibShowArgs {
+    /// Module name (e.g., io, math, memory, ascii, debug)
+    module: String,
 }
 
 #[derive(Args)]
@@ -164,15 +257,28 @@ struct GenerateLoopArgs {
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
+    // Handle --no-color flag and NO_COLOR env var
+    if cli.no_color || std::env::var("NO_COLOR").is_ok() {
+        set_override(false);
+    }
+
     match cli.command {
-        Commands::Run(args) => match args.file {
-            Some(f) => run::run_file(Path::new(&f))?,
-            None => {
-                let (proj, base) = require_project()?;
-                let entry = proj.entry_path(&base);
-                run::run_file(&entry)?;
+        Commands::Run(args) => {
+            let tape_size = args.tape_size.unwrap_or(30_000);
+            match args.file {
+                Some(f) => run::run_file_with_tape_size(Path::new(&f), tape_size)?,
+                None => {
+                    let (proj, base) = require_project()?;
+                    let ts = proj
+                        .build
+                        .as_ref()
+                        .and_then(|b| b.tape_size)
+                        .unwrap_or(tape_size);
+                    let entry = proj.entry_path(&base);
+                    run::run_file_with_tape_size(&entry, ts)?;
+                }
             }
-        },
+        }
 
         Commands::Compile(args) => {
             let file = match args.file {
@@ -213,18 +319,27 @@ fn main() -> Result<()> {
             }
         }
 
-        Commands::Start => {
-            start::start_repl()?;
+        Commands::Start(args) => {
+            let tape_size = args.tape_size.unwrap_or(30_000);
+            start::start_repl_with_tape_size(tape_size)?;
         }
 
-        Commands::Debug(args) => match args.file {
-            Some(f) => debug::debug_file(Path::new(&f))?,
-            None => {
-                let (proj, base) = require_project()?;
-                let entry = proj.entry_path(&base);
-                debug::debug_file(&entry)?;
+        Commands::Debug(args) => {
+            let tape_size = args.tape_size.unwrap_or(30_000);
+            match args.file {
+                Some(f) => debug::debug_file_with_tape_size(Path::new(&f), tape_size)?,
+                None => {
+                    let (proj, base) = require_project()?;
+                    let ts = proj
+                        .build
+                        .as_ref()
+                        .and_then(|b| b.tape_size)
+                        .unwrap_or(tape_size);
+                    let entry = proj.entry_path(&base);
+                    debug::debug_file_with_tape_size(&entry, ts)?;
+                }
             }
-        },
+        }
 
         Commands::Format(args) => {
             let opts = format::FormatOptions {
@@ -287,8 +402,70 @@ fn main() -> Result<()> {
         },
 
         Commands::New(args) => {
-            new::new_project(&args.name)?;
+            new::new_project(&args.name, args.with_std)?;
         }
+
+        Commands::Check(args) => {
+            let mut all_ok = true;
+            match args.file {
+                Some(f) => {
+                    if !check::check_and_report(Path::new(&f))? {
+                        all_ok = false;
+                    }
+                }
+                None => {
+                    let (proj, base) = require_project()?;
+                    let files = proj.resolve_include_files(&base)?;
+                    if files.is_empty() {
+                        println!("No .bf files found in project include paths.");
+                    }
+                    for f in &files {
+                        if !check::check_and_report(f)? {
+                            all_ok = false;
+                        }
+                    }
+                }
+            }
+            if !all_ok {
+                process::exit(1);
+            }
+        }
+
+        Commands::Pack(args) => {
+            let file = match args.file {
+                Some(f) => std::path::PathBuf::from(f),
+                None => {
+                    let (proj, base) = require_project()?;
+                    proj.entry_path(&base)
+                }
+            };
+            pack::pack_and_output(&file, args.output.as_deref(), args.optimize)?;
+        }
+
+        Commands::Init => {
+            init::init_project()?;
+        }
+
+        Commands::Bench(args) => {
+            let tape_size = args.tape_size.unwrap_or(30_000);
+            let file = match args.file {
+                Some(f) => std::path::PathBuf::from(f),
+                None => {
+                    let (proj, base) = require_project()?;
+                    proj.entry_path(&base)
+                }
+            };
+            bench::bench_and_report(&file, tape_size)?;
+        }
+
+        Commands::Stdlib(cmd) => match cmd {
+            StdlibCommands::List => {
+                stdlib::list_modules();
+            }
+            StdlibCommands::Show(args) => {
+                stdlib::show_module(&args.module)?;
+            }
+        },
 
         Commands::Generate(gen) => match gen {
             GenerateCommands::Helloworld(args) => {

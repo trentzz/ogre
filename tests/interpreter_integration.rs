@@ -65,13 +65,23 @@ fn test_is_done_after_run() {
 
 #[test]
 fn test_step_by_step() {
-    let mut interp = Interpreter::new("+++").unwrap();
+    // With IR, +>+>+ is 5 ops: Add(1), Right(1), Add(1), Right(1), Add(1)
+    let mut interp = Interpreter::new("+>+>+").unwrap();
     assert_eq!(interp.tape_value(0), 0);
-    interp.step().unwrap();
+
+    interp.step().unwrap(); // Add(1)
     assert_eq!(interp.tape_value(0), 1);
-    interp.step().unwrap();
-    assert_eq!(interp.tape_value(0), 2);
-    interp.step().unwrap();
-    assert_eq!(interp.tape_value(0), 3);
+
+    interp.step().unwrap(); // Right(1)
+    assert_eq!(interp.data_pointer(), 1);
+
+    interp.step().unwrap(); // Add(1)
+    assert_eq!(interp.tape_value(1), 1);
+
+    interp.step().unwrap(); // Right(1)
+    assert_eq!(interp.data_pointer(), 2);
+
+    interp.step().unwrap(); // Add(1)
+    assert_eq!(interp.tape_value(2), 1);
     assert!(interp.is_done());
 }

@@ -23,6 +23,7 @@ pub struct ProjectMeta {
 #[derive(Deserialize, Debug)]
 pub struct BuildConfig {
     pub include: Vec<String>,
+    pub tape_size: Option<usize>,
 }
 
 #[derive(Deserialize, Debug)]

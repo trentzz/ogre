@@ -5,12 +5,18 @@ use super::interpreter::Interpreter;
 
 pub struct StartRepl {
     interp: Interpreter,
+    tape_size: usize,
 }
 
 impl StartRepl {
     pub fn new() -> Result<Self> {
+        Self::with_tape_size(super::interpreter::DEFAULT_TAPE_SIZE)
+    }
+
+    pub fn with_tape_size(tape_size: usize) -> Result<Self> {
         Ok(Self {
-            interp: Interpreter::new("")?,
+            interp: Interpreter::with_tape_size("", tape_size)?,
+            tape_size,
         })
     }
 
@@ -50,7 +56,7 @@ impl StartRepl {
                     break;
                 }
                 "reset" => {
-                    self.interp = Interpreter::new("")?;
+                    self.interp = Interpreter::with_tape_size("", self.tape_size)?;
                     println!("Tape reset.");
                     continue;
                 }
@@ -82,5 +88,10 @@ impl StartRepl {
 
 pub fn start_repl() -> Result<()> {
     let mut repl = StartRepl::new()?;
+    repl.run()
+}
+
+pub fn start_repl_with_tape_size(tape_size: usize) -> Result<()> {
+    let mut repl = StartRepl::with_tape_size(tape_size)?;
     repl.run()
 }

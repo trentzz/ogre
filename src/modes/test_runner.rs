@@ -1,4 +1,6 @@
 use anyhow::{bail, Result};
+use colored::Colorize;
+use regex::Regex;
 use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -7,12 +9,19 @@ use super::interpreter::Interpreter;
 use super::preprocess::Preprocessor;
 use crate::project::OgreProject;
 
+/// Default instruction limit for test timeout (10 million).
+const DEFAULT_INSTRUCTION_LIMIT: u64 = 10_000_000;
+
 #[derive(Deserialize)]
 pub struct TestCase {
     pub name: String,
     pub brainfuck: String, // path to .bf file
     pub input: String,
     pub output: String,
+    /// Optional regex pattern to match against output instead of exact match.
+    pub output_regex: Option<String>,
+    /// Optional instruction limit override (default 10M).
+    pub timeout: Option<u64>,
 }
 
 /// Run all tests from a single JSON test file.
@@ -32,6 +41,7 @@ pub fn run_tests_from_file(
     let total = cases.len();
     let mut passed = 0usize;
     let mut failed = 0usize;
+    let mut failures: Vec<(String, String)> = Vec::new();
 
     for case in &cases {
         // Resolve .bf path relative to base_dir
@@ -43,35 +53,80 @@ pub fn run_tests_from_file(
 
         let expanded = match Preprocessor::process_file(&bf_path) {
             Err(e) => {
-                println!("FAIL  {}", case.name);
-                println!("      preprocess error: {}", e);
+                print!("{}", "F".red());
+                failures.push((case.name.clone(), format!("preprocess error: {}", e)));
                 failed += 1;
                 continue;
             }
             Ok(s) => s,
         };
 
+        let instruction_limit = case.timeout.unwrap_or(DEFAULT_INSTRUCTION_LIMIT);
+
         match Interpreter::with_input(&expanded, &case.input) {
             Err(e) => {
-                println!("FAIL  {}", case.name);
-                println!("      parse error: {}", e);
+                print!("{}", "F".red());
+                failures.push((case.name.clone(), format!("parse error: {}", e)));
                 failed += 1;
             }
-            Ok(mut interp) => match interp.run() {
+            Ok(mut interp) => match interp.run_with_limit(instruction_limit) {
                 Err(e) => {
-                    println!("FAIL  {}", case.name);
-                    println!("      runtime error: {}", e);
+                    print!("{}", "F".red());
+                    failures.push((case.name.clone(), format!("runtime error: {}", e)));
                     failed += 1;
                 }
-                Ok(()) => {
+                Ok(false) => {
+                    print!("{}", "T".yellow());
+                    failures.push((
+                        case.name.clone(),
+                        format!(
+                            "timeout: exceeded {} instruction limit",
+                            instruction_limit
+                        ),
+                    ));
+                    failed += 1;
+                }
+                Ok(true) => {
                     let actual = interp.output_as_string();
-                    if actual == case.output {
-                        println!("PASS  {}", case.name);
+                    let pass = if let Some(ref regex_str) = case.output_regex {
+                        match Regex::new(regex_str) {
+                            Ok(re) => re.is_match(&actual),
+                            Err(e) => {
+                                print!("{}", "F".red());
+                                failures.push((
+                                    case.name.clone(),
+                                    format!("invalid regex '{}': {}", regex_str, e),
+                                ));
+                                failed += 1;
+                                continue;
+                            }
+                        }
+                    } else {
+                        actual == case.output
+                    };
+
+                    if pass {
+                        print!("{}", ".".green());
                         passed += 1;
                     } else {
-                        println!("FAIL  {}", case.name);
-                        println!("      expected: {:?}", case.output);
-                        println!("      actual:   {:?}", actual);
+                        print!("{}", "F".red());
+                        if let Some(ref regex_str) = case.output_regex {
+                            failures.push((
+                                case.name.clone(),
+                                format!(
+                                    "output {:?} does not match regex /{}/",
+                                    actual, regex_str
+                                ),
+                            ));
+                        } else {
+                            failures.push((
+                                case.name.clone(),
+                                format!(
+                                    "expected: {:?}\n      actual:   {:?}",
+                                    case.output, actual
+                                ),
+                            ));
+                        }
                         failed += 1;
                     }
                 }
@@ -79,7 +134,33 @@ pub fn run_tests_from_file(
         }
     }
 
-    println!("{}/{} tests passed", passed, total);
+    println!(); // newline after dots
+
+    // Print failure details
+    if !failures.is_empty() {
+        println!();
+        println!("{}", "Failures:".red().bold());
+        for (name, detail) in &failures {
+            println!("  {} {}", "FAIL".red().bold(), name);
+            println!("      {}", detail);
+        }
+        println!();
+    }
+
+    if failed > 0 {
+        println!(
+            "{}/{} tests passed",
+            passed.to_string().red(),
+            total
+        );
+    } else {
+        println!(
+            "{}/{} tests passed",
+            passed.to_string().green(),
+            total
+        );
+    }
+
     Ok((passed, failed))
 }
 
@@ -162,5 +243,20 @@ mod tests {
     fn test_inline_case_invalid_bf_errors() {
         let result = run_inline_case("[unclosed", "", "");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_regex_matching() {
+        let re = Regex::new(r"Hello.*!").unwrap();
+        assert!(re.is_match("Hello World!"));
+        assert!(!re.is_match("Goodbye"));
+    }
+
+    #[test]
+    fn test_instruction_limit() {
+        // Infinite loop: +[+] will never terminate
+        let mut interp = Interpreter::with_input("+[+]", "").unwrap();
+        let completed = interp.run_with_limit(100).unwrap();
+        assert!(!completed);
     }
 }

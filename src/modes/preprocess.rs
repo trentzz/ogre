@@ -7,6 +7,30 @@ use super::directive_parser::{
     skip_spaces, skip_whitespace, take_brace_body, take_identifier, take_quoted_string,
 };
 
+// Embedded standard library modules
+const STDLIB_IO: &str = include_str!("../../stdlib/io.bf");
+const STDLIB_MATH: &str = include_str!("../../stdlib/math.bf");
+const STDLIB_MEMORY: &str = include_str!("../../stdlib/memory.bf");
+const STDLIB_ASCII: &str = include_str!("../../stdlib/ascii.bf");
+const STDLIB_DEBUG: &str = include_str!("../../stdlib/debug.bf");
+
+/// Get the source code for a standard library module by name.
+pub fn get_stdlib_module(name: &str) -> Option<&'static str> {
+    match name {
+        "io" => Some(STDLIB_IO),
+        "math" => Some(STDLIB_MATH),
+        "memory" => Some(STDLIB_MEMORY),
+        "ascii" => Some(STDLIB_ASCII),
+        "debug" => Some(STDLIB_DEBUG),
+        _ => None,
+    }
+}
+
+/// List all available standard library module names.
+pub fn stdlib_modules() -> &'static [&'static str] {
+    &["ascii", "debug", "io", "math", "memory"]
+}
+
 /// Two-pass macro preprocessor for @fn/@call/@import directives.
 ///
 /// Pass 1 (collect): resolve @import recursively, accumulate @fn bodies,
@@ -61,26 +85,48 @@ impl Preprocessor {
                         let path_str = take_quoted_string(&chars, &mut i)
                             .map_err(|e| anyhow::anyhow!("@import: {}", e))?;
 
-                        let import_path = base_dir.join(&path_str);
-                        // Use canonical path for cycle detection when possible
-                        let canonical = import_path
-                            .canonicalize()
-                            .unwrap_or_else(|_| import_path.clone());
+                        // Check for standard library imports (std/module.bf)
+                        if path_str.starts_with("std/") {
+                            let module_name = path_str
+                                .strip_prefix("std/")
+                                .unwrap()
+                                .strip_suffix(".bf")
+                                .unwrap_or(
+                                    path_str.strip_prefix("std/").unwrap()
+                                );
 
-                        if self.imported.contains(&canonical) {
-                            bail!("import cycle detected: {}", import_path.display());
+                            let stdlib_source = get_stdlib_module(module_name)
+                                .ok_or_else(|| anyhow::anyhow!(
+                                    "unknown standard library module: std/{}", module_name
+                                ))?;
+
+                            let sentinel = PathBuf::from(format!("<stdlib:{}>", module_name));
+                            if !self.imported.contains(&sentinel) {
+                                self.imported.insert(sentinel);
+                                self.collect(stdlib_source, base_dir)?;
+                            }
+                        } else {
+                            let import_path = base_dir.join(&path_str);
+                            // Use canonical path for cycle detection when possible
+                            let canonical = import_path
+                                .canonicalize()
+                                .unwrap_or_else(|_| import_path.clone());
+
+                            if self.imported.contains(&canonical) {
+                                bail!("import cycle detected: {}", import_path.display());
+                            }
+                            self.imported.insert(canonical);
+
+                            let imported_source = fs::read_to_string(&import_path)
+                                .map_err(|e| anyhow::anyhow!("@import \"{}\": {}", path_str, e))?;
+                            let import_base = import_path
+                                .parent()
+                                .map(|p| p.to_path_buf())
+                                .unwrap_or_else(|| PathBuf::from("."));
+
+                            // Collect @fn definitions; discard top-level code from imports
+                            self.collect(&imported_source, &import_base)?;
                         }
-                        self.imported.insert(canonical);
-
-                        let imported_source = fs::read_to_string(&import_path)
-                            .map_err(|e| anyhow::anyhow!("@import \"{}\": {}", path_str, e))?;
-                        let import_base = import_path
-                            .parent()
-                            .map(|p| p.to_path_buf())
-                            .unwrap_or_else(|| PathBuf::from("."));
-
-                        // Collect @fn definitions; discard top-level code from imports
-                        self.collect(&imported_source, &import_base)?;
                     }
 
                     "fn" => {
@@ -273,5 +319,34 @@ mod tests {
     #[test]
     fn test_import_nonexistent_file_errors() {
         assert!(process("@import \"nonexistent_xyz.bf\"").is_err());
+    }
+
+    #[test]
+    fn test_stdlib_import_io() {
+        let out = process("@import \"std/io.bf\" @call print_newline").unwrap();
+        assert!(!out.contains("@call"));
+        assert!(!out.contains("@fn"));
+        assert!(!out.contains("@import"));
+        // Should contain the BF for printing newline
+        assert!(out.contains('.'));
+    }
+
+    #[test]
+    fn test_stdlib_import_math() {
+        let out = process("@import \"std/math.bf\" @call zero").unwrap();
+        assert!(!out.contains("@call"));
+        assert!(out.contains("[-]"));
+    }
+
+    #[test]
+    fn test_stdlib_unknown_module_errors() {
+        assert!(process("@import \"std/nonexistent.bf\"").is_err());
+    }
+
+    #[test]
+    fn test_stdlib_duplicate_import_ok() {
+        let out =
+            process("@import \"std/io.bf\" @import \"std/io.bf\" @call print_newline").unwrap();
+        assert!(!out.contains("@call"));
     }
 }

@@ -19,16 +19,19 @@ impl Debugger {
         })
     }
 
+    pub fn new_live_with_tape_size(source: &str, tape_size: usize) -> Result<Self> {
+        Ok(Self {
+            interp: Interpreter::with_live_stdin_and_tape_size(source, tape_size)?,
+            breakpoints: HashSet::new(),
+        })
+    }
+
     fn print_status(&self) {
         let ip = self.interp.code_pointer();
-        let op = if ip < self.interp.code_len() {
-            self.interp.code_char(ip)
-        } else {
-            '∎'
-        };
+        let desc = self.interp.op_description(ip);
         let dp = self.interp.data_pointer();
         let val = self.interp.tape_value(dp);
-        println!("  ip={} op='{}'  dp={}  val={}", ip, op, dp, val);
+        println!("  ip={}  op={}  dp={}  val={}", ip, desc, dp, val);
 
         // Short memory window
         let window = self.interp.peek_window(dp, 3);
@@ -82,7 +85,7 @@ impl Debugger {
                     println!("Commands:");
                     println!("  step [n]              Execute 1 or n instructions");
                     println!("  continue / c          Run until breakpoint or end");
-                    println!("  breakpoint <n>        Set breakpoint at instruction index n");
+                    println!("  breakpoint <n>        Set breakpoint at op index n");
                     println!("  breakpoint list       List all breakpoints");
                     println!("  breakpoint delete <n> Remove breakpoint n");
                     println!("  jump <n>              Move code pointer to n (no execution)");
@@ -104,7 +107,8 @@ impl Debugger {
                 ["breakpoint", n] if n.chars().all(|c| c.is_ascii_digit()) => {
                     let idx: usize = n.parse().unwrap();
                     self.breakpoints.insert(idx);
-                    println!("Breakpoint set at instruction {}", idx);
+                    let desc = self.interp.op_description(idx);
+                    println!("Breakpoint set at op {} ({})", idx, desc);
                 }
                 ["breakpoint", "list"] => {
                     if self.breakpoints.is_empty() {
@@ -113,12 +117,8 @@ impl Debugger {
                         let mut bps: Vec<usize> = self.breakpoints.iter().copied().collect();
                         bps.sort_unstable();
                         for bp in bps {
-                            let op = if bp < self.interp.code_len() {
-                                self.interp.code_char(bp)
-                            } else {
-                                '?'
-                            };
-                            println!("  breakpoint {} → '{}'", bp, op);
+                            let desc = self.interp.op_description(bp);
+                            println!("  breakpoint {} → {}", bp, desc);
                         }
                     }
                 }
@@ -134,7 +134,7 @@ impl Debugger {
                     let idx: usize = n.parse().unwrap_or(0);
                     if idx <= self.interp.code_len() {
                         self.interp.set_code_pointer(idx);
-                        println!("Jumped to instruction {}.", idx);
+                        println!("Jumped to op {}.", idx);
                         self.print_status();
                     } else {
                         println!(
@@ -225,23 +225,25 @@ impl Debugger {
             println!("Index {} out of range.", idx);
             return;
         }
+        let desc = self.interp.op_description(idx);
+        // Show context: surrounding ops
         let start = idx.saturating_sub(3);
         let end = (idx + 4).min(self.interp.code_len());
-        let context: String = (start..end)
+        let context: Vec<String> = (start..end)
             .map(|i| {
-                let c = self.interp.code_char(i);
+                let d = self.interp.op_description(i);
                 if i == idx {
-                    format!("[{}]", c)
+                    format!("[{}]", d)
                 } else {
-                    c.to_string()
+                    d
                 }
             })
             .collect();
         println!(
-            "  instruction {}: {} (context: {})",
+            "  op {}: {} (context: {})",
             idx,
-            self.interp.code_char(idx),
-            context
+            desc,
+            context.join(" ")
         );
     }
 }
@@ -249,5 +251,11 @@ impl Debugger {
 pub fn debug_file(path: &Path) -> Result<()> {
     let expanded = Preprocessor::process_file(path)?;
     let mut dbg = Debugger::new_live(&expanded)?;
+    dbg.run_repl()
+}
+
+pub fn debug_file_with_tape_size(path: &Path, tape_size: usize) -> Result<()> {
+    let expanded = Preprocessor::process_file(path)?;
+    let mut dbg = Debugger::new_live_with_tape_size(&expanded, tape_size)?;
     dbg.run_repl()
 }

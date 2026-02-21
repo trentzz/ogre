@@ -1,12 +1,15 @@
 use anyhow::{bail, Result};
 use std::io::Write;
 
+use super::ir::{Op, Program};
+
+pub const DEFAULT_TAPE_SIZE: usize = 30_000;
+
 pub struct Interpreter {
     tape: Vec<u8>,
     data_ptr: usize,
-    code: Vec<char>,
-    code_ptr: usize,
-    jump_table: Vec<Option<usize>>,
+    program: Program,
+    ip: usize,
     output: Vec<u8>,
     input: Vec<u8>,
     input_ptr: usize,
@@ -14,6 +17,12 @@ pub struct Interpreter {
     live_stdin: bool,
     /// When true, `.` flushes output to stdout immediately.
     streaming: bool,
+    /// Total instructions executed (for bench mode).
+    pub instruction_count: u64,
+    /// Track which cells have been touched.
+    cells_touched: Vec<bool>,
+    /// Original source chars for display purposes (debugger/REPL).
+    source_chars: Vec<char>,
 }
 
 impl Interpreter {
@@ -21,37 +30,105 @@ impl Interpreter {
         Self::with_input(source, "")
     }
 
+    pub fn with_tape_size(source: &str, tape_size: usize) -> Result<Self> {
+        Self::with_input_and_tape_size(source, "", tape_size)
+    }
+
     pub fn with_live_stdin(source: &str) -> Result<Self> {
-        let code: Vec<char> = source.chars().collect();
-        let jump_table = build_jump_table(&code)?;
+        let program = Program::from_source(source)?;
+        let tape_size = DEFAULT_TAPE_SIZE;
         Ok(Self {
-            tape: vec![0u8; 30_000],
+            tape: vec![0u8; tape_size],
             data_ptr: 0,
-            code,
-            code_ptr: 0,
-            jump_table,
+            program,
+            ip: 0,
             output: Vec::new(),
             input: Vec::new(),
             input_ptr: 0,
             live_stdin: true,
             streaming: false,
+            instruction_count: 0,
+            cells_touched: vec![false; tape_size],
+            source_chars: source.chars().collect(),
+        })
+    }
+
+    pub fn with_live_stdin_and_tape_size(source: &str, tape_size: usize) -> Result<Self> {
+        let program = Program::from_source(source)?;
+        Ok(Self {
+            tape: vec![0u8; tape_size],
+            data_ptr: 0,
+            program,
+            ip: 0,
+            output: Vec::new(),
+            input: Vec::new(),
+            input_ptr: 0,
+            live_stdin: true,
+            streaming: false,
+            instruction_count: 0,
+            cells_touched: vec![false; tape_size],
+            source_chars: source.chars().collect(),
         })
     }
 
     pub fn with_input(source: &str, input: &str) -> Result<Self> {
-        let code: Vec<char> = source.chars().collect();
-        let jump_table = build_jump_table(&code)?;
+        Self::with_input_and_tape_size(source, input, DEFAULT_TAPE_SIZE)
+    }
+
+    pub fn with_input_and_tape_size(source: &str, input: &str, tape_size: usize) -> Result<Self> {
+        let program = Program::from_source(source)?;
         Ok(Self {
-            tape: vec![0u8; 30_000],
+            tape: vec![0u8; tape_size],
             data_ptr: 0,
-            code,
-            code_ptr: 0,
-            jump_table,
+            program,
+            ip: 0,
             output: Vec::new(),
             input: input.bytes().collect(),
             input_ptr: 0,
             live_stdin: false,
             streaming: false,
+            instruction_count: 0,
+            cells_touched: vec![false; tape_size],
+            source_chars: source.chars().collect(),
+        })
+    }
+
+    /// Create an interpreter with an optimized program.
+    pub fn new_optimized(source: &str) -> Result<Self> {
+        let mut program = Program::from_source(source)?;
+        program.optimize();
+        Ok(Self {
+            tape: vec![0u8; DEFAULT_TAPE_SIZE],
+            data_ptr: 0,
+            program,
+            ip: 0,
+            output: Vec::new(),
+            input: Vec::new(),
+            input_ptr: 0,
+            live_stdin: false,
+            streaming: false,
+            instruction_count: 0,
+            cells_touched: vec![false; DEFAULT_TAPE_SIZE],
+            source_chars: source.chars().collect(),
+        })
+    }
+
+    pub fn new_optimized_with_input(source: &str, input: &str) -> Result<Self> {
+        let mut program = Program::from_source(source)?;
+        program.optimize();
+        Ok(Self {
+            tape: vec![0u8; DEFAULT_TAPE_SIZE],
+            data_ptr: 0,
+            program,
+            ip: 0,
+            output: Vec::new(),
+            input: input.bytes().collect(),
+            input_ptr: 0,
+            live_stdin: false,
+            streaming: false,
+            instruction_count: 0,
+            cells_touched: vec![false; DEFAULT_TAPE_SIZE],
+            source_chars: source.chars().collect(),
         })
     }
 
@@ -70,19 +147,55 @@ impl Interpreter {
     }
 
     pub fn code_pointer(&self) -> usize {
-        self.code_ptr
+        self.ip
     }
 
     pub fn set_code_pointer(&mut self, val: usize) {
-        self.code_ptr = val;
+        self.ip = val;
     }
 
+    /// Number of ops in the program.
     pub fn code_len(&self) -> usize {
-        self.code.len()
+        self.program.ops.len()
     }
 
+    /// Get a display character for the op at the given index.
+    /// Used by debugger for showing instruction context.
     pub fn code_char(&self, idx: usize) -> char {
-        self.code[idx]
+        match &self.program.ops[idx] {
+            Op::Add(_) => '+',
+            Op::Sub(_) => '-',
+            Op::Right(_) => '>',
+            Op::Left(_) => '<',
+            Op::Output => '.',
+            Op::Input => ',',
+            Op::JumpIfZero(_) => '[',
+            Op::JumpIfNonZero(_) => ']',
+            Op::Clear => '0',
+        }
+    }
+
+    /// Get a descriptive string for the op at the given index.
+    pub fn op_description(&self, idx: usize) -> String {
+        if idx >= self.program.ops.len() {
+            return "END".to_string();
+        }
+        match &self.program.ops[idx] {
+            Op::Add(n) => format!("Add({})", n),
+            Op::Sub(n) => format!("Sub({})", n),
+            Op::Right(n) => format!("Right({})", n),
+            Op::Left(n) => format!("Left({})", n),
+            Op::Output => "Output".to_string(),
+            Op::Input => "Input".to_string(),
+            Op::JumpIfZero(t) => format!("JumpIfZero({})", t),
+            Op::JumpIfNonZero(t) => format!("JumpIfNonZero({})", t),
+            Op::Clear => "Clear".to_string(),
+        }
+    }
+
+    /// Get the underlying program.
+    pub fn program(&self) -> &Program {
+        &self.program
     }
 
     pub fn output(&self) -> &[u8] {
@@ -98,41 +211,49 @@ impl Interpreter {
     }
 
     pub fn is_done(&self) -> bool {
-        self.code_ptr >= self.code.len()
+        self.ip >= self.program.ops.len()
     }
 
-    /// Execute one BF instruction (skipping non-BF characters).
-    /// Returns `Ok(true)` if there are more instructions to execute, `Ok(false)` if done.
-    pub fn step(&mut self) -> Result<bool> {
-        // Skip non-BF characters
-        while self.code_ptr < self.code.len() && !is_bf_op(self.code[self.code_ptr]) {
-            self.code_ptr += 1;
-        }
+    /// Count of unique cells that have been written to.
+    pub fn cells_touched_count(&self) -> usize {
+        self.cells_touched.iter().filter(|&&b| b).count()
+    }
 
+    /// Execute one IR instruction.
+    /// Returns `Ok(true)` if there are more instructions, `Ok(false)` if done.
+    pub fn step(&mut self) -> Result<bool> {
         if self.is_done() {
             return Ok(false);
         }
 
-        match self.code[self.code_ptr] {
-            '>' => {
-                if self.data_ptr + 1 >= self.tape.len() {
+        self.instruction_count += 1;
+
+        match &self.program.ops[self.ip] {
+            Op::Add(n) => {
+                let n = *n;
+                self.tape[self.data_ptr] = self.tape[self.data_ptr].wrapping_add(n);
+                self.cells_touched[self.data_ptr] = true;
+            }
+            Op::Sub(n) => {
+                let n = *n;
+                self.tape[self.data_ptr] = self.tape[self.data_ptr].wrapping_sub(n);
+                self.cells_touched[self.data_ptr] = true;
+            }
+            Op::Right(n) => {
+                let n = *n;
+                if self.data_ptr + n >= self.tape.len() {
                     bail!("data pointer out of bounds (right)");
                 }
-                self.data_ptr += 1;
+                self.data_ptr += n;
             }
-            '<' => {
-                if self.data_ptr == 0 {
+            Op::Left(n) => {
+                let n = *n;
+                if self.data_ptr < n {
                     bail!("data pointer out of bounds (left)");
                 }
-                self.data_ptr -= 1;
+                self.data_ptr -= n;
             }
-            '+' => {
-                self.tape[self.data_ptr] = self.tape[self.data_ptr].wrapping_add(1);
-            }
-            '-' => {
-                self.tape[self.data_ptr] = self.tape[self.data_ptr].wrapping_sub(1);
-            }
-            '.' => {
+            Op::Output => {
                 let byte = self.tape[self.data_ptr];
                 if self.streaming {
                     let stdout = std::io::stdout();
@@ -143,7 +264,7 @@ impl Interpreter {
                     self.output.push(byte);
                 }
             }
-            ',' => {
+            Op::Input => {
                 if self.input_ptr < self.input.len() {
                     self.tape[self.data_ptr] = self.input[self.input_ptr];
                     self.input_ptr += 1;
@@ -152,34 +273,34 @@ impl Interpreter {
                     let mut byte = [0u8; 1];
                     match std::io::stdin().read(&mut byte) {
                         Ok(1) => self.tape[self.data_ptr] = byte[0],
-                        _ => self.tape[self.data_ptr] = 0, // EOF
+                        _ => self.tape[self.data_ptr] = 0,
                     }
                 } else {
-                    self.tape[self.data_ptr] = 0; // EOF
+                    self.tape[self.data_ptr] = 0;
                 }
+                self.cells_touched[self.data_ptr] = true;
             }
-            '[' => {
+            Op::JumpIfZero(target) => {
+                let target = *target;
                 if self.tape[self.data_ptr] == 0 {
-                    // Jump to matching ] + 1
-                    let target =
-                        self.jump_table[self.code_ptr].expect("jump table must have entry for [");
-                    self.code_ptr = target + 1;
+                    self.ip = target + 1;
                     return Ok(!self.is_done());
                 }
             }
-            ']' => {
+            Op::JumpIfNonZero(target) => {
+                let target = *target;
                 if self.tape[self.data_ptr] != 0 {
-                    // Jump back to matching [ + 1
-                    let target =
-                        self.jump_table[self.code_ptr].expect("jump table must have entry for ]");
-                    self.code_ptr = target + 1;
+                    self.ip = target + 1;
                     return Ok(!self.is_done());
                 }
             }
-            _ => {}
+            Op::Clear => {
+                self.tape[self.data_ptr] = 0;
+                self.cells_touched[self.data_ptr] = true;
+            }
         }
 
-        self.code_ptr += 1;
+        self.ip += 1;
         Ok(!self.is_done())
     }
 
@@ -188,6 +309,18 @@ impl Interpreter {
             self.step()?;
         }
         Ok(())
+    }
+
+    /// Run with an instruction limit. Returns Ok(true) if completed,
+    /// Ok(false) if the limit was reached.
+    pub fn run_with_limit(&mut self, max_instructions: u64) -> Result<bool> {
+        while !self.is_done() {
+            if self.instruction_count >= max_instructions {
+                return Ok(false);
+            }
+            self.step()?;
+        }
+        Ok(true)
     }
 
     pub fn output_as_string(&self) -> String {
@@ -203,43 +336,15 @@ impl Interpreter {
             .collect()
     }
 
-    /// Feed new code into the interpreter, appending to existing code and rebuilding the jump table.
+    /// Feed new code into the interpreter, appending to existing program.
     /// Used by the REPL to add code incrementally.
     pub fn feed(&mut self, source: &str) -> Result<()> {
-        let new_chars: Vec<char> = source.chars().collect();
-        self.code.extend(new_chars);
-        self.jump_table = build_jump_table(&self.code)?;
+        // Rebuild the entire program from concatenated source characters
+        self.source_chars.extend(source.chars());
+        let full_source: String = self.source_chars.iter().collect();
+        self.program = Program::from_source(&full_source)?;
         Ok(())
     }
-}
-
-fn is_bf_op(c: char) -> bool {
-    matches!(c, '>' | '<' | '+' | '-' | '.' | ',' | '[' | ']')
-}
-
-fn build_jump_table(code: &[char]) -> Result<Vec<Option<usize>>> {
-    let mut table = vec![None; code.len()];
-    let mut stack: Vec<usize> = Vec::new();
-
-    for (i, &ch) in code.iter().enumerate() {
-        match ch {
-            '[' => stack.push(i),
-            ']' => {
-                let open = stack
-                    .pop()
-                    .ok_or_else(|| anyhow::anyhow!("unmatched `]` at position {}", i))?;
-                table[open] = Some(i);
-                table[i] = Some(open);
-            }
-            _ => {}
-        }
-    }
-
-    if let Some(pos) = stack.pop() {
-        bail!("unmatched `[` at position {}", pos);
-    }
-
-    Ok(table)
 }
 
 #[cfg(test)]
@@ -358,7 +463,8 @@ mod tests {
 
     #[test]
     fn test_step_returns_true_when_more() {
-        let mut interp = Interpreter::new("++").unwrap();
+        // Use two different ops so they aren't collapsed into one
+        let mut interp = Interpreter::new("+>").unwrap();
         let more = interp.step().unwrap();
         assert!(more);
     }
@@ -387,5 +493,36 @@ mod tests {
         let mut interp = Interpreter::with_input(",[.,]", "Hello").unwrap();
         interp.run().unwrap();
         assert_eq!(interp.output_as_string(), "Hello");
+    }
+
+    #[test]
+    fn test_instruction_count() {
+        let mut interp = Interpreter::new("+++").unwrap();
+        interp.run().unwrap();
+        // +++ is compiled to Add(3), which is 1 instruction
+        assert_eq!(interp.instruction_count, 1);
+    }
+
+    #[test]
+    fn test_run_with_limit() {
+        let mut interp = Interpreter::new("+>+>+>+").unwrap();
+        // 4 ops: Add(1), Right(1), Add(1), Right(1), Add(1), Right(1), Add(1)
+        let completed = interp.run_with_limit(3).unwrap();
+        assert!(!completed); // should not complete in 3 instructions
+    }
+
+    #[test]
+    fn test_cells_touched() {
+        let mut interp = Interpreter::new("+>++>+++").unwrap();
+        interp.run().unwrap();
+        assert!(interp.cells_touched_count() >= 3);
+    }
+
+    #[test]
+    fn test_custom_tape_size() {
+        let mut interp = Interpreter::with_tape_size("+", 100).unwrap();
+        interp.run().unwrap();
+        assert_eq!(interp.tape().len(), 100);
+        assert_eq!(interp.tape_value(0), 1);
     }
 }
