@@ -4,27 +4,26 @@ use std::io::{self, BufRead, Write};
 use super::interpreter::Interpreter;
 
 pub struct StartRepl {
-    tape: Vec<u8>,
-    data_ptr: usize,
+    interp: Interpreter,
 }
 
 impl StartRepl {
-    pub fn new() -> Self {
-        Self {
-            tape: vec![0u8; 30_000],
-            data_ptr: 0,
-        }
+    pub fn new() -> Result<Self> {
+        Ok(Self {
+            interp: Interpreter::new("")?,
+        })
     }
 
     fn print_memory(&self) {
-        let start = self.data_ptr.saturating_sub(3);
-        let end = (self.data_ptr + 4).min(self.tape.len());
+        let dp = self.interp.data_pointer();
+        let start = dp.saturating_sub(3);
+        let end = (dp + 4).min(self.interp.tape().len());
         let cells: Vec<String> = (start..end)
             .map(|i| {
-                if i == self.data_ptr {
-                    format!(">{}:{}<", i, self.tape[i])
+                if i == dp {
+                    format!(">{}:{}<", i, self.interp.tape_value(i))
                 } else {
-                    format!("{}:{}", i, self.tape[i])
+                    format!("{}:{}", i, self.interp.tape_value(i))
                 }
             })
             .collect();
@@ -51,40 +50,27 @@ impl StartRepl {
                     break;
                 }
                 "reset" => {
-                    self.tape = vec![0u8; 30_000];
-                    self.data_ptr = 0;
+                    self.interp = Interpreter::new("")?;
                     println!("Tape reset.");
                     continue;
                 }
                 "" => continue,
                 code => {
-                    // Build a source that starts with an existing tape snapshot
-                    // We run the snippet on the current tape state by constructing
-                    // a fresh interpreter, copying our tape state in, and running.
-                    match Interpreter::new(code) {
+                    match self.interp.feed(code) {
                         Err(e) => {
                             println!("Parse error: {}", e);
                             continue;
                         }
-                        Ok(mut interp) => {
-                            // Copy current tape state into interpreter
-                            interp.tape = self.tape.clone();
-                            interp.data_ptr = self.data_ptr;
-
-                            match interp.run() {
-                                Err(e) => println!("Runtime error: {}", e),
-                                Ok(()) => {
-                                    // Print any output
-                                    if !interp.output.is_empty() {
-                                        print!("{}", interp.output_as_string());
-                                        io::stdout().flush()?;
-                                    }
-                                    // Save tape state back
-                                    self.tape = interp.tape;
-                                    self.data_ptr = interp.data_ptr;
+                        Ok(()) => match self.interp.run() {
+                            Err(e) => println!("Runtime error: {}", e),
+                            Ok(()) => {
+                                if !self.interp.output().is_empty() {
+                                    print!("{}", String::from_utf8_lossy(self.interp.output()));
+                                    io::stdout().flush()?;
+                                    self.interp.clear_output();
                                 }
                             }
-                        }
+                        },
                     }
                     self.print_memory();
                 }
@@ -95,6 +81,6 @@ impl StartRepl {
 }
 
 pub fn start_repl() -> Result<()> {
-    let mut repl = StartRepl::new();
+    let mut repl = StartRepl::new()?;
     repl.run()
 }

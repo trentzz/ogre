@@ -1,12 +1,13 @@
 use anyhow::Result;
-use std::fs;
+use std::path::Path;
 
 use super::interpreter::Interpreter;
+use super::preprocess::Preprocessor;
 
-pub fn run_file(path: &str) -> Result<()> {
-    let source = fs::read_to_string(path)?;
-    let mut interp = Interpreter::with_live_stdin(&source)?;
+pub fn run_file(path: &Path) -> Result<()> {
+    let expanded = Preprocessor::process_file(path)?;
+    let mut interp = Interpreter::with_live_stdin(&expanded)?;
+    interp.set_streaming(true);
     interp.run()?;
-    print!("{}", interp.output_as_string());
     Ok(())
 }

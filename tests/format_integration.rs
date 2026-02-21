@@ -73,7 +73,7 @@ fn test_format_grouping_with_semantics() {
 
     let mut interp = Interpreter::new(&formatted).unwrap();
     interp.run().unwrap();
-    assert_eq!(interp.tape[0], 10);
+    assert_eq!(interp.tape_value(0), 10);
 }
 
 #[test]

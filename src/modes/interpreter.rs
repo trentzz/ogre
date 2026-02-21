@@ -1,16 +1,19 @@
 use anyhow::{bail, Result};
+use std::io::Write;
 
 pub struct Interpreter {
-    pub tape: Vec<u8>,
-    pub data_ptr: usize,
-    pub code: Vec<char>,
-    pub code_ptr: usize,
-    pub jump_table: Vec<Option<usize>>,
-    pub output: Vec<u8>,
-    pub input: Vec<u8>,
-    pub input_ptr: usize,
+    tape: Vec<u8>,
+    data_ptr: usize,
+    code: Vec<char>,
+    code_ptr: usize,
+    jump_table: Vec<Option<usize>>,
+    output: Vec<u8>,
+    input: Vec<u8>,
+    input_ptr: usize,
     /// When true, `,` reads from real stdin after the input buffer is exhausted.
-    pub live_stdin: bool,
+    live_stdin: bool,
+    /// When true, `.` flushes output to stdout immediately.
+    streaming: bool,
 }
 
 impl Interpreter {
@@ -31,6 +34,7 @@ impl Interpreter {
             input: Vec::new(),
             input_ptr: 0,
             live_stdin: true,
+            streaming: false,
         })
     }
 
@@ -47,7 +51,50 @@ impl Interpreter {
             input: input.bytes().collect(),
             input_ptr: 0,
             live_stdin: false,
+            streaming: false,
         })
+    }
+
+    pub fn set_streaming(&mut self, streaming: bool) {
+        self.streaming = streaming;
+    }
+
+    // ---- Accessors ----
+
+    pub fn tape_value(&self, addr: usize) -> u8 {
+        self.tape[addr]
+    }
+
+    pub fn data_pointer(&self) -> usize {
+        self.data_ptr
+    }
+
+    pub fn code_pointer(&self) -> usize {
+        self.code_ptr
+    }
+
+    pub fn set_code_pointer(&mut self, val: usize) {
+        self.code_ptr = val;
+    }
+
+    pub fn code_len(&self) -> usize {
+        self.code.len()
+    }
+
+    pub fn code_char(&self, idx: usize) -> char {
+        self.code[idx]
+    }
+
+    pub fn output(&self) -> &[u8] {
+        &self.output
+    }
+
+    pub fn clear_output(&mut self) {
+        self.output.clear();
+    }
+
+    pub fn tape(&self) -> &[u8] {
+        &self.tape
     }
 
     pub fn is_done(&self) -> bool {
@@ -86,7 +133,15 @@ impl Interpreter {
                 self.tape[self.data_ptr] = self.tape[self.data_ptr].wrapping_sub(1);
             }
             '.' => {
-                self.output.push(self.tape[self.data_ptr]);
+                let byte = self.tape[self.data_ptr];
+                if self.streaming {
+                    let stdout = std::io::stdout();
+                    let mut handle = stdout.lock();
+                    let _ = handle.write_all(&[byte]);
+                    let _ = handle.flush();
+                } else {
+                    self.output.push(byte);
+                }
             }
             ',' => {
                 if self.input_ptr < self.input.len() {
@@ -106,8 +161,8 @@ impl Interpreter {
             '[' => {
                 if self.tape[self.data_ptr] == 0 {
                     // Jump to matching ] + 1
-                    let target = self.jump_table[self.code_ptr]
-                        .expect("jump table must have entry for [");
+                    let target =
+                        self.jump_table[self.code_ptr].expect("jump table must have entry for [");
                     self.code_ptr = target + 1;
                     return Ok(!self.is_done());
                 }
@@ -115,8 +170,8 @@ impl Interpreter {
             ']' => {
                 if self.tape[self.data_ptr] != 0 {
                     // Jump back to matching [ + 1
-                    let target = self.jump_table[self.code_ptr]
-                        .expect("jump table must have entry for ]");
+                    let target =
+                        self.jump_table[self.code_ptr].expect("jump table must have entry for ]");
                     self.code_ptr = target + 1;
                     return Ok(!self.is_done());
                 }
@@ -147,6 +202,15 @@ impl Interpreter {
             .map(|i| (i, self.tape[i], i == self.data_ptr))
             .collect()
     }
+
+    /// Feed new code into the interpreter, appending to existing code and rebuilding the jump table.
+    /// Used by the REPL to add code incrementally.
+    pub fn feed(&mut self, source: &str) -> Result<()> {
+        let new_chars: Vec<char> = source.chars().collect();
+        self.code.extend(new_chars);
+        self.jump_table = build_jump_table(&self.code)?;
+        Ok(())
+    }
 }
 
 fn is_bf_op(c: char) -> bool {
@@ -161,9 +225,9 @@ fn build_jump_table(code: &[char]) -> Result<Vec<Option<usize>>> {
         match ch {
             '[' => stack.push(i),
             ']' => {
-                let open = stack.pop().ok_or_else(|| {
-                    anyhow::anyhow!("unmatched `]` at position {}", i)
-                })?;
+                let open = stack
+                    .pop()
+                    .ok_or_else(|| anyhow::anyhow!("unmatched `]` at position {}", i))?;
                 table[open] = Some(i);
                 table[i] = Some(open);
             }
@@ -186,37 +250,40 @@ mod tests {
     fn test_increment() {
         let mut interp = Interpreter::new("+").unwrap();
         interp.run().unwrap();
-        assert_eq!(interp.tape[0], 1);
+        assert_eq!(interp.tape_value(0), 1);
     }
 
     #[test]
     fn test_decrement() {
         let mut interp = Interpreter::new("+-").unwrap();
         interp.run().unwrap();
-        assert_eq!(interp.tape[0], 0);
+        assert_eq!(interp.tape_value(0), 0);
     }
 
     #[test]
     fn test_move_right() {
         let mut interp = Interpreter::new(">+").unwrap();
         interp.run().unwrap();
-        assert_eq!(interp.data_ptr, 1);
-        assert_eq!(interp.tape[1], 1);
+        assert_eq!(interp.data_pointer(), 1);
+        assert_eq!(interp.tape_value(1), 1);
     }
 
     #[test]
     fn test_move_left() {
         let mut interp = Interpreter::new(">+<").unwrap();
         interp.run().unwrap();
-        assert_eq!(interp.data_ptr, 0);
-        assert_eq!(interp.tape[1], 1);
+        assert_eq!(interp.data_pointer(), 0);
+        assert_eq!(interp.tape_value(1), 1);
     }
 
     #[test]
     fn test_output() {
-        let mut interp = Interpreter::new("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++.").unwrap();
+        let mut interp = Interpreter::new(
+            "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++.",
+        )
+        .unwrap();
         interp.run().unwrap();
-        assert_eq!(interp.output, vec![72]); // 'H' = 72
+        assert_eq!(interp.output(), vec![72]); // 'H' = 72
     }
 
     #[test]
@@ -230,14 +297,14 @@ mod tests {
     fn test_input_eof_gives_zero() {
         let mut interp = Interpreter::with_input(",", "").unwrap();
         interp.run().unwrap();
-        assert_eq!(interp.tape[0], 0);
+        assert_eq!(interp.tape_value(0), 0);
     }
 
     #[test]
     fn test_loop_skip_when_zero() {
         let mut interp = Interpreter::new("[+]").unwrap();
         interp.run().unwrap();
-        assert_eq!(interp.tape[0], 0); // loop body never executed
+        assert_eq!(interp.tape_value(0), 0); // loop body never executed
     }
 
     #[test]
@@ -245,26 +312,16 @@ mod tests {
         // +++ loop decrements until 0: tape[0]=0, tape[1]=3
         let mut interp = Interpreter::new("+++[>+<-]").unwrap();
         interp.run().unwrap();
-        assert_eq!(interp.tape[0], 0);
-        assert_eq!(interp.tape[1], 3);
+        assert_eq!(interp.tape_value(0), 0);
+        assert_eq!(interp.tape_value(1), 3);
     }
 
     #[test]
     fn test_wrapping_add() {
-        // cell starts at 255, +1 should wrap to 0
-        let mut code = "-".repeat(1); // start at 0, then we set to 255 via wrapping
-        // Use wrapping: 0 - 1 = 255
-        let mut interp = Interpreter::new("-").unwrap();
+        // 0 - 1 wraps to 255, then + 1 wraps back to 0
+        let mut interp = Interpreter::new("-+").unwrap();
         interp.run().unwrap();
-        assert_eq!(interp.tape[0], 255);
-        // Now add 1 to 255 → 0
-        let mut interp2 = Interpreter::new("-+").unwrap();
-        // actually let's just set tape manually and test
-        let mut interp3 = Interpreter::new("+").unwrap();
-        interp3.tape[0] = 255;
-        interp3.run().unwrap();
-        assert_eq!(interp3.tape[0], 0);
-        drop(code);
+        assert_eq!(interp.tape_value(0), 0);
     }
 
     #[test]
@@ -272,7 +329,7 @@ mod tests {
         // 0 - 1 wraps to 255
         let mut interp = Interpreter::new("-").unwrap();
         interp.run().unwrap();
-        assert_eq!(interp.tape[0], 255);
+        assert_eq!(interp.tape_value(0), 255);
     }
 
     #[test]
@@ -289,7 +346,7 @@ mod tests {
     fn test_comments_ignored() {
         let mut interp = Interpreter::new("+ this is a comment +").unwrap();
         interp.run().unwrap();
-        assert_eq!(interp.tape[0], 2);
+        assert_eq!(interp.tape_value(0), 2);
     }
 
     #[test]

@@ -11,7 +11,7 @@ fn test_generate_hello_world() {
 
 #[test]
 fn test_generate_string_hi() {
-    let code = generate_string("Hi!");
+    let code = generate_string("Hi!").unwrap();
     let mut interp = Interpreter::new(&code).unwrap();
     interp.run().unwrap();
     assert_eq!(interp.output_as_string(), "Hi!");
@@ -19,14 +19,14 @@ fn test_generate_string_hi() {
 
 #[test]
 fn test_generate_string_empty() {
-    let code = generate_string("");
+    let code = generate_string("").unwrap();
     // Empty string → no output ops
     assert!(!code.contains('.'));
 }
 
 #[test]
 fn test_generate_string_single_char() {
-    let code = generate_string("Z");
+    let code = generate_string("Z").unwrap();
     let mut interp = Interpreter::new(&code).unwrap();
     interp.run().unwrap();
     assert_eq!(interp.output_as_string(), "Z");
@@ -35,7 +35,7 @@ fn test_generate_string_single_char() {
 #[test]
 fn test_generate_string_decreasing_ascii() {
     // 'C' (67) followed by 'A' (65) — requires decrements
-    let code = generate_string("CA");
+    let code = generate_string("CA").unwrap();
     let mut interp = Interpreter::new(&code).unwrap();
     interp.run().unwrap();
     assert_eq!(interp.output_as_string(), "CA");
@@ -48,9 +48,9 @@ fn test_generate_loop_counter_reaches_zero() {
     let mut interp = Interpreter::new(&code).unwrap();
     interp.run().unwrap();
     // Cell 0 should be 0 (loop counter exhausted)
-    assert_eq!(interp.tape[0], 0);
+    assert_eq!(interp.tape_value(0), 0);
     // Cell 1 should be 5 (incremented 5 times in loop body)
-    assert_eq!(interp.tape[1], 5);
+    assert_eq!(interp.tape_value(1), 5);
 }
 
 #[test]
@@ -58,8 +58,8 @@ fn test_generate_loop_zero() {
     let code = generate_loop(0);
     let mut interp = Interpreter::new(&code).unwrap();
     interp.run().unwrap();
-    assert_eq!(interp.tape[0], 0);
-    assert_eq!(interp.tape[1], 0);
+    assert_eq!(interp.tape_value(0), 0);
+    assert_eq!(interp.tape_value(1), 0);
 }
 
 #[test]
@@ -67,13 +67,18 @@ fn test_generate_loop_one() {
     let code = generate_loop(1);
     let mut interp = Interpreter::new(&code).unwrap();
     interp.run().unwrap();
-    assert_eq!(interp.tape[1], 1);
+    assert_eq!(interp.tape_value(1), 1);
 }
 
 #[test]
 fn test_generate_string_newline() {
-    let code = generate_string("\n");
+    let code = generate_string("\n").unwrap();
     let mut interp = Interpreter::new(&code).unwrap();
     interp.run().unwrap();
     assert_eq!(interp.output_as_string(), "\n");
+}
+
+#[test]
+fn test_generate_string_non_ascii_errors() {
+    assert!(generate_string("hello 🌍").is_err());
 }

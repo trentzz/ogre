@@ -1,10 +1,12 @@
 pub mod analyse;
 pub mod compile;
 pub mod debug;
+pub mod directive_parser;
 pub mod format;
 pub mod generate;
 pub mod interpreter;
 pub mod new;
+pub mod preprocess;
 pub mod run;
 pub mod start;
 pub mod test_runner;

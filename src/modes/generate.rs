@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use std::fs;
 
 /// Returns the classic BF hello world program.
@@ -8,7 +8,10 @@ pub fn generate_hello_world() -> String {
 
 /// Generates BF code that prints the given string.
 /// Uses a simple approach: set each cell to the ASCII value and print.
-pub fn generate_string(s: &str) -> String {
+pub fn generate_string(s: &str) -> Result<String> {
+    if !s.is_ascii() {
+        bail!("generate string only supports ASCII characters");
+    }
     let mut code = String::new();
     let mut current_val: u8 = 0;
 
@@ -25,7 +28,7 @@ pub fn generate_string(s: &str) -> String {
         current_val = target;
     }
 
-    code
+    Ok(code)
 }
 
 /// Generates a BF loop scaffold that runs exactly `n` times.
@@ -62,11 +65,7 @@ pub fn generate_loop(n: usize) -> String {
 
         if best_a * best_b == n {
             // Use nested loops: cell0 = a, inner loop: cell1 += b, outer loop runs a times
-            format!(
-                "{}[>{}[>>+<<-]<-]",
-                "+".repeat(best_a),
-                "+".repeat(best_b)
-            )
+            format!("{}[>{}[>>+<<-]<-]", "+".repeat(best_a), "+".repeat(best_b))
         } else {
             // Fallback: just use direct increment (may be large)
             format!("{}[>+<-]", "+".repeat(n.min(255)))
@@ -100,7 +99,7 @@ mod tests {
 
     #[test]
     fn test_generate_string_hi() {
-        let code = generate_string("Hi!");
+        let code = generate_string("Hi!").unwrap();
         let mut interp = Interpreter::new(&code).unwrap();
         interp.run().unwrap();
         assert_eq!(interp.output_as_string(), "Hi!");
@@ -108,16 +107,21 @@ mod tests {
 
     #[test]
     fn test_generate_string_empty() {
-        let code = generate_string("");
+        let code = generate_string("").unwrap();
         assert!(code.is_empty() || !code.contains('.'));
     }
 
     #[test]
     fn test_generate_string_single_char() {
-        let code = generate_string("A");
+        let code = generate_string("A").unwrap();
         let mut interp = Interpreter::new(&code).unwrap();
         interp.run().unwrap();
         assert_eq!(interp.output_as_string(), "A");
+    }
+
+    #[test]
+    fn test_generate_string_non_ascii_errors() {
+        assert!(generate_string("hello 🌍").is_err());
     }
 
     #[test]
@@ -127,7 +131,7 @@ mod tests {
         let mut interp = Interpreter::new(&code).unwrap();
         interp.run().unwrap();
         // Cell 1 should be 0 since n=0
-        assert_eq!(interp.tape[1], 0);
+        assert_eq!(interp.tape_value(1), 0);
     }
 
     #[test]
@@ -136,7 +140,7 @@ mod tests {
         let mut interp = Interpreter::new(&code).unwrap();
         interp.run().unwrap();
         // Cell 1 should have value 3
-        assert_eq!(interp.tape[1], 3);
+        assert_eq!(interp.tape_value(1), 3);
     }
 
     #[test]
@@ -144,6 +148,6 @@ mod tests {
         let code = generate_loop(10);
         let mut interp = Interpreter::new(&code).unwrap();
         interp.run().unwrap();
-        assert_eq!(interp.tape[1], 10);
+        assert_eq!(interp.tape_value(1), 10);
     }
 }

@@ -1,5 +1,8 @@
 use anyhow::Result;
 use std::fs;
+use std::path::Path;
+
+use super::preprocess::Preprocessor;
 
 pub struct AnalysisReport {
     pub bracket_errors: Vec<String>,
@@ -59,9 +62,10 @@ pub fn analyse_source(code: &str) -> AnalysisReport {
     }
 }
 
-pub fn analyse_file(path: &str, verbose: bool, in_place: bool) -> Result<()> {
+pub fn analyse_file(path: &Path, verbose: bool, in_place: bool) -> Result<()> {
     let source = fs::read_to_string(path)?;
-    let report = analyse_source(&source);
+    let expanded = Preprocessor::process_file(path)?;
+    let report = analyse_source(&expanded);
 
     let mut output_lines: Vec<String> = Vec::new();
 
@@ -79,28 +83,38 @@ pub fn analyse_file(path: &str, verbose: bool, in_place: bool) -> Result<()> {
 
     match report.ptr_end_offset {
         Some(offset) => output_lines.push(format!("Data pointer net offset: {}", offset)),
-        None => output_lines.push("Data pointer: indeterminate (program contains loops)".to_string()),
+        None => {
+            output_lines.push("Data pointer: indeterminate (program contains loops)".to_string())
+        }
     }
 
     if verbose {
         output_lines.push(String::new());
         output_lines.push("=== VERBOSE ===".to_string());
-        let op_counts = count_ops(&source);
-        output_lines.push(format!("  > (move right): {}", op_counts.0));
-        output_lines.push(format!("  < (move left):  {}", op_counts.1));
-        output_lines.push(format!("  + (increment):  {}", op_counts.2));
-        output_lines.push(format!("  - (decrement):  {}", op_counts.3));
-        output_lines.push(format!("  [ (loop open):  {}", op_counts.4));
-        output_lines.push(format!("  ] (loop close): {}", op_counts.5));
+        let counts = count_ops(&source);
+        output_lines.push(format!("  > (move right): {}", counts.right));
+        output_lines.push(format!("  < (move left):  {}", counts.left));
+        output_lines.push(format!("  + (increment):  {}", counts.inc));
+        output_lines.push(format!("  - (decrement):  {}", counts.dec));
+        output_lines.push(format!("  [ (loop open):  {}", counts.open));
+        output_lines.push(format!("  ] (loop close): {}", counts.close));
     }
 
     if in_place {
+        // Strip any existing analysis comments from top of file
+        let stripped: String = source
+            .lines()
+            .skip_while(|line| line.starts_with("# ") || line.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let stripped = if stripped.is_empty() {
+            stripped
+        } else {
+            format!("{}\n", stripped)
+        };
         // Embed the report as comments at the top of the source file
-        let comment_block: String = output_lines
-            .iter()
-            .map(|l| format!("# {}\n", l))
-            .collect();
-        let new_source = format!("{}\n{}", comment_block, source);
+        let comment_block: String = output_lines.iter().map(|l| format!("# {}\n", l)).collect();
+        let new_source = format!("{}\n{}", comment_block, stripped);
         fs::write(path, new_source)?;
     } else {
         for line in &output_lines {
@@ -111,25 +125,36 @@ pub fn analyse_file(path: &str, verbose: bool, in_place: bool) -> Result<()> {
     Ok(())
 }
 
-fn count_ops(code: &str) -> (usize, usize, usize, usize, usize, usize) {
-    let mut r = 0;
-    let mut l = 0;
-    let mut inc = 0;
-    let mut dec = 0;
-    let mut open = 0;
-    let mut close = 0;
+struct OpCounts {
+    right: usize,
+    left: usize,
+    inc: usize,
+    dec: usize,
+    open: usize,
+    close: usize,
+}
+
+fn count_ops(code: &str) -> OpCounts {
+    let mut counts = OpCounts {
+        right: 0,
+        left: 0,
+        inc: 0,
+        dec: 0,
+        open: 0,
+        close: 0,
+    };
     for ch in code.chars() {
         match ch {
-            '>' => r += 1,
-            '<' => l += 1,
-            '+' => inc += 1,
-            '-' => dec += 1,
-            '[' => open += 1,
-            ']' => close += 1,
+            '>' => counts.right += 1,
+            '<' => counts.left += 1,
+            '+' => counts.inc += 1,
+            '-' => counts.dec += 1,
+            '[' => counts.open += 1,
+            ']' => counts.close += 1,
             _ => {}
         }
     }
-    (r, l, inc, dec, open, close)
+    counts
 }
 
 #[cfg(test)]

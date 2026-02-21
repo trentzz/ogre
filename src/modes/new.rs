@@ -8,34 +8,52 @@ pub fn new_project(name: &str) -> Result<()> {
         anyhow::bail!("directory '{}' already exists", name);
     }
 
-    fs::create_dir_all(dir)?;
+    // Create directory structure
+    fs::create_dir_all(dir.join("src"))?;
+    fs::create_dir_all(dir.join("tests"))?;
 
-    // Create starter .bf file
-    let bf_path = dir.join(format!("{}.bf", name));
+    // ogre.toml
+    let toml_content = format!(
+        r#"[project]
+name = "{name}"
+version = "0.1.0"
+description = ""
+author = ""
+entry = "src/main.bf"
+
+[build]
+include = ["src/"]
+
+[[tests]]
+name = "Basic"
+file = "tests/basic.json"
+"#,
+        name = name
+    );
+    fs::write(dir.join("ogre.toml"), toml_content)?;
+
+    // src/main.bf — starter file with an empty @fn main
     fs::write(
-        &bf_path,
-        "Hello, World! (replace this with your brainfuck program)\n",
+        dir.join("src/main.bf"),
+        "@fn main {\n    \n}\n\n@call main\n",
     )?;
 
-    // Create starter tests.json
-    let tests_path = dir.join("tests.json");
-    let tests_content = format!(
-        r#"[
-  {{
-    "name": "hello world",
-    "brainfuck": "{}/{}.bf",
+    // tests/basic.json — starter test pointing at src/main.bf
+    let test_content = r#"[
+  {
+    "name": "basic",
+    "brainfuck": "src/main.bf",
     "input": "",
     "output": ""
-  }}
+  }
 ]
-"#,
-        name, name
-    );
-    fs::write(&tests_path, tests_content)?;
+"#;
+    fs::write(dir.join("tests/basic.json"), test_content)?;
 
     println!("Created project '{}':", name);
-    println!("  {}", bf_path.display());
-    println!("  {}", tests_path.display());
+    println!("  {}/ogre.toml", name);
+    println!("  {}/src/main.bf", name);
+    println!("  {}/tests/basic.json", name);
 
     Ok(())
 }

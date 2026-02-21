@@ -3,6 +3,8 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+use super::preprocess::Preprocessor;
+
 pub fn generate_c(bf_code: &str) -> String {
     let mut out = String::new();
     out.push_str("#include <stdio.h>\n");
@@ -11,14 +13,53 @@ pub fn generate_c(bf_code: &str) -> String {
     out.push_str("    char *ptr = array;\n");
 
     let mut indent_level: usize = 1;
+    let chars: Vec<char> = bf_code.chars().collect();
+    let mut i = 0;
 
-    for ch in bf_code.chars() {
+    while i < chars.len() {
+        let ch = chars[i];
         let indent = "    ".repeat(indent_level);
         match ch {
-            '>' => out.push_str(&format!("{}ptr++;\n", indent)),
-            '<' => out.push_str(&format!("{}ptr--;\n", indent)),
-            '+' => out.push_str(&format!("{}(*ptr)++;\n", indent)),
-            '-' => out.push_str(&format!("{}(*ptr)--;\n", indent)),
+            '>' | '<' | '+' | '-' => {
+                // Collapse runs of identical ops
+                let mut count = 1usize;
+                while i + count < chars.len() && chars[i + count] == ch {
+                    count += 1;
+                }
+                i += count;
+                match ch {
+                    '>' => {
+                        if count == 1 {
+                            out.push_str(&format!("{}ptr++;\n", indent));
+                        } else {
+                            out.push_str(&format!("{}ptr += {};\n", indent, count));
+                        }
+                    }
+                    '<' => {
+                        if count == 1 {
+                            out.push_str(&format!("{}ptr--;\n", indent));
+                        } else {
+                            out.push_str(&format!("{}ptr -= {};\n", indent, count));
+                        }
+                    }
+                    '+' => {
+                        if count == 1 {
+                            out.push_str(&format!("{}(*ptr)++;\n", indent));
+                        } else {
+                            out.push_str(&format!("{}*ptr += {};\n", indent, count));
+                        }
+                    }
+                    '-' => {
+                        if count == 1 {
+                            out.push_str(&format!("{}(*ptr)--;\n", indent));
+                        } else {
+                            out.push_str(&format!("{}*ptr -= {};\n", indent, count));
+                        }
+                    }
+                    _ => unreachable!(),
+                }
+                continue;
+            }
             '.' => out.push_str(&format!("{}putchar(*ptr);\n", indent)),
             ',' => out.push_str(&format!("{}*ptr = getchar();\n", indent)),
             '[' => {
@@ -34,6 +75,7 @@ pub fn generate_c(bf_code: &str) -> String {
             }
             _ => {} // comments ignored
         }
+        i += 1;
     }
 
     out.push_str("    return 0;\n");
@@ -41,30 +83,52 @@ pub fn generate_c(bf_code: &str) -> String {
     out
 }
 
-pub fn compile(file: &str, output: Option<&str>, keep: bool) -> Result<()> {
-    let source = fs::read_to_string(file)?;
-    let c_code = generate_c(&source);
+fn find_c_compiler() -> Result<String> {
+    for compiler in &["cc", "gcc", "clang"] {
+        if Command::new(compiler)
+            .arg("--version")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok()
+        {
+            return Ok(compiler.to_string());
+        }
+    }
+    bail!("no C compiler found. Install gcc, clang, or ensure 'cc' is available on PATH")
+}
 
-    let input_path = Path::new(file);
-    let stem = input_path
+pub fn compile(file: &Path, output: Option<&str>, keep: bool) -> Result<()> {
+    let expanded = Preprocessor::process_file(file)?;
+    let c_code = generate_c(&expanded);
+
+    let stem = file
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("output");
 
-    let c_path = format!("{}.c", stem);
     let out_path = output.unwrap_or(stem).to_string();
+
+    // Write intermediate .c file to temp dir unless --keep
+    let c_path = if keep {
+        format!("{}.c", stem)
+    } else {
+        let tmp = std::env::temp_dir().join(format!("ogre_{}.c", stem));
+        tmp.to_string_lossy().into_owned()
+    };
 
     fs::write(&c_path, &c_code)?;
 
-    let status = Command::new("gcc")
-        .args([&c_path, "-o", &out_path])
+    let compiler = find_c_compiler()?;
+    let status = Command::new(&compiler)
+        .args([&c_path, "-o", &out_path, "-O2"])
         .status()?;
 
     if !status.success() {
         if !keep {
             let _ = fs::remove_file(&c_path);
         }
-        bail!("gcc compilation failed");
+        bail!("{} compilation failed", compiler);
     }
 
     if !keep {
@@ -135,11 +199,9 @@ mod tests {
     fn test_generate_c_comments_ignored() {
         let c_with = generate_c("+this is comment+");
         let c_without = generate_c("++");
-        // Both should have same C structure
-        assert_eq!(
-            c_with.matches("(*ptr)++;").count(),
-            c_without.matches("(*ptr)++;").count()
-        );
+        // Both should produce collapsed increment
+        assert!(c_with.contains("*ptr += 2;") || c_with.matches("(*ptr)++;").count() == 2);
+        assert!(c_without.contains("*ptr += 2;"));
     }
 
     #[test]
@@ -149,5 +211,17 @@ mod tests {
         let lines: Vec<&str> = c.lines().collect();
         let inner_plus = lines.iter().find(|l| l.contains("(*ptr)++;")).unwrap();
         assert!(inner_plus.starts_with("            ")); // 3 levels = 12 spaces
+    }
+
+    #[test]
+    fn test_generate_c_collapsed_ops() {
+        let c = generate_c("+++");
+        assert!(c.contains("*ptr += 3;"));
+    }
+
+    #[test]
+    fn test_generate_c_collapsed_moves() {
+        let c = generate_c(">>>");
+        assert!(c.contains("ptr += 3;"));
     }
 }

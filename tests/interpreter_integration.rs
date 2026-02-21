@@ -27,8 +27,8 @@ fn test_cell_multiplication() {
     // ++++[>+++<-] → cell 0: 0, cell 1: 12 (4×3)
     let mut interp = Interpreter::new("++++[>+++<-]").unwrap();
     interp.run().unwrap();
-    assert_eq!(interp.tape[0], 0);
-    assert_eq!(interp.tape[1], 12);
+    assert_eq!(interp.tape_value(0), 0);
+    assert_eq!(interp.tape_value(1), 12);
 }
 
 #[test]
@@ -36,17 +36,16 @@ fn test_multiply_from_file() {
     let source = fs::read_to_string(script_path("simple_multiply.bf")).unwrap();
     let mut interp = Interpreter::new(&source).unwrap();
     interp.run().unwrap();
-    assert_eq!(interp.tape[0], 0);
-    assert_eq!(interp.tape[1], 12);
+    assert_eq!(interp.tape_value(0), 0);
+    assert_eq!(interp.tape_value(1), 12);
 }
 
 #[test]
 fn test_multiple_outputs() {
     // Print ASCII 65 'A' and 66 'B' (65 + signs = 'A', then +1 = 'B')
-    let mut interp = Interpreter::new(
-        "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++.+.",
-    )
-    .unwrap();
+    let mut interp =
+        Interpreter::new("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++.+.")
+            .unwrap();
     interp.run().unwrap();
     assert_eq!(interp.output_as_string(), "AB");
 }
@@ -67,12 +66,12 @@ fn test_is_done_after_run() {
 #[test]
 fn test_step_by_step() {
     let mut interp = Interpreter::new("+++").unwrap();
-    assert_eq!(interp.tape[0], 0);
+    assert_eq!(interp.tape_value(0), 0);
     interp.step().unwrap();
-    assert_eq!(interp.tape[0], 1);
+    assert_eq!(interp.tape_value(0), 1);
     interp.step().unwrap();
-    assert_eq!(interp.tape[0], 2);
+    assert_eq!(interp.tape_value(0), 2);
     interp.step().unwrap();
-    assert_eq!(interp.tape[0], 3);
+    assert_eq!(interp.tape_value(0), 3);
     assert!(interp.is_done());
 }

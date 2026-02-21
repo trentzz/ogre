@@ -1,13 +1,14 @@
 use anyhow::Result;
 use std::collections::HashSet;
-use std::fs;
 use std::io::{self, BufRead, Write};
+use std::path::Path;
 
 use super::interpreter::Interpreter;
+use super::preprocess::Preprocessor;
 
 pub struct Debugger {
-    pub interp: Interpreter,
-    pub breakpoints: HashSet<usize>,
+    interp: Interpreter,
+    breakpoints: HashSet<usize>,
 }
 
 impl Debugger {
@@ -19,14 +20,14 @@ impl Debugger {
     }
 
     fn print_status(&self) {
-        let ip = self.interp.code_ptr;
-        let op = if ip < self.interp.code.len() {
-            self.interp.code[ip]
+        let ip = self.interp.code_pointer();
+        let op = if ip < self.interp.code_len() {
+            self.interp.code_char(ip)
         } else {
             '∎'
         };
-        let dp = self.interp.data_ptr;
-        let val = self.interp.tape[dp];
+        let dp = self.interp.data_pointer();
+        let val = self.interp.tape_value(dp);
         println!("  ip={} op='{}'  dp={}  val={}", ip, op, dp, val);
 
         // Short memory window
@@ -45,10 +46,10 @@ impl Debugger {
     }
 
     fn flush_output(&mut self) {
-        if !self.interp.output.is_empty() {
-            print!("{}", String::from_utf8_lossy(&self.interp.output));
+        if !self.interp.output().is_empty() {
+            print!("{}", String::from_utf8_lossy(self.interp.output()));
             let _ = io::stdout().flush();
-            self.interp.output.clear();
+            self.interp.clear_output();
         }
     }
 
@@ -112,8 +113,8 @@ impl Debugger {
                         let mut bps: Vec<usize> = self.breakpoints.iter().copied().collect();
                         bps.sort_unstable();
                         for bp in bps {
-                            let op = if bp < self.interp.code.len() {
-                                self.interp.code[bp]
+                            let op = if bp < self.interp.code_len() {
+                                self.interp.code_char(bp)
                             } else {
                                 '?'
                             };
@@ -131,32 +132,36 @@ impl Debugger {
                 }
                 ["jump", n] => {
                     let idx: usize = n.parse().unwrap_or(0);
-                    if idx <= self.interp.code.len() {
-                        self.interp.code_ptr = idx;
+                    if idx <= self.interp.code_len() {
+                        self.interp.set_code_pointer(idx);
                         println!("Jumped to instruction {}.", idx);
                         self.print_status();
                     } else {
-                        println!("Index {} out of range (max {}).", idx, self.interp.code.len());
+                        println!(
+                            "Index {} out of range (max {}).",
+                            idx,
+                            self.interp.code_len()
+                        );
                     }
                 }
                 ["peek"] => {
-                    let window = self.interp.peek_window(self.interp.data_ptr, 5);
+                    let window = self.interp.peek_window(self.interp.data_pointer(), 5);
                     self.print_window(&window);
                 }
                 ["peek", n] => {
-                    let center: usize = n.parse().unwrap_or(self.interp.data_ptr);
+                    let center: usize = n.parse().unwrap_or(self.interp.data_pointer());
                     let window = self.interp.peek_window(center, 5);
                     self.print_window(&window);
                 }
                 ["show", "instruction"] => {
-                    self.show_instruction(self.interp.code_ptr);
+                    self.show_instruction(self.interp.code_pointer());
                 }
                 ["show", "instruction", n] => {
-                    let idx: usize = n.parse().unwrap_or(self.interp.code_ptr);
+                    let idx: usize = n.parse().unwrap_or(self.interp.code_pointer());
                     self.show_instruction(idx);
                 }
                 ["show", "memory"] => {
-                    let window = self.interp.peek_window(self.interp.data_ptr, 10);
+                    let window = self.interp.peek_window(self.interp.data_pointer(), 10);
                     self.print_window(&window);
                 }
                 _ => {
@@ -190,8 +195,8 @@ impl Debugger {
                 println!("Program finished.");
                 break;
             }
-            if self.breakpoints.contains(&self.interp.code_ptr) {
-                println!("Hit breakpoint at {}.", self.interp.code_ptr);
+            if self.breakpoints.contains(&self.interp.code_pointer()) {
+                println!("Hit breakpoint at {}.", self.interp.code_pointer());
                 self.print_status();
                 break;
             }
@@ -216,29 +221,33 @@ impl Debugger {
     }
 
     fn show_instruction(&self, idx: usize) {
-        if idx >= self.interp.code.len() {
+        if idx >= self.interp.code_len() {
             println!("Index {} out of range.", idx);
             return;
         }
         let start = idx.saturating_sub(3);
-        let end = (idx + 4).min(self.interp.code.len());
-        let context: String = self.interp.code[start..end]
-            .iter()
-            .enumerate()
-            .map(|(i, &c)| {
-                if start + i == idx {
+        let end = (idx + 4).min(self.interp.code_len());
+        let context: String = (start..end)
+            .map(|i| {
+                let c = self.interp.code_char(i);
+                if i == idx {
                     format!("[{}]", c)
                 } else {
                     c.to_string()
                 }
             })
             .collect();
-        println!("  instruction {}: {} (context: {})", idx, self.interp.code[idx], context);
+        println!(
+            "  instruction {}: {} (context: {})",
+            idx,
+            self.interp.code_char(idx),
+            context
+        );
     }
 }
 
-pub fn debug_file(path: &str) -> Result<()> {
-    let source = fs::read_to_string(path)?;
-    let mut dbg = Debugger::new_live(&source)?;
+pub fn debug_file(path: &Path) -> Result<()> {
+    let expanded = Preprocessor::process_file(path)?;
+    let mut dbg = Debugger::new_live(&expanded)?;
     dbg.run_repl()
 }
