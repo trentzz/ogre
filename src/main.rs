@@ -6,14 +6,17 @@ use colored::control::set_override;
 use std::path::Path;
 use std::process;
 
+pub mod error;
 mod modes;
 mod project;
+pub mod verbosity;
 
 use modes::{
-    analyse, bench, check, compile, debug, format, generate, init, new, pack, run, start, stdlib,
-    test_runner,
+    analyse, bench, check, compile, compile_wasm, debug, doc, format, generate, init, new, pack,
+    run, start, stdlib, test_runner, trace,
 };
 use project::OgreProject;
+use verbosity::Verbosity;
 
 #[derive(Parser)]
 #[command(
@@ -42,30 +45,37 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Interpret and execute a brainfuck file (or project entry if omitted)
-    #[command(after_help = "Examples:\n  ogre run hello.bf\n  ogre run --tape-size 60000 big.bf")]
+    #[command(after_help = "Examples:\n  ogre run hello.bf\n  ogre run --tape-size 60000 big.bf\n  ogre run --watch hello.bf")]
     Run(RunArgs),
-    /// Compile brainfuck to a native binary via C
-    #[command(after_help = "Examples:\n  ogre compile hello.bf -o hello\n  ogre compile hello.bf --keep")]
+    /// Compile brainfuck to a native binary via C (or to WASM)
+    #[command(after_help = "Examples:\n  ogre compile hello.bf -o hello\n  ogre compile hello.bf --keep\n  ogre compile hello.bf --target wasm")]
     Compile(CompileArgs),
     /// Build the current project (requires ogre.toml)
+    #[command(after_help = "Examples:\n  ogre build\n  ogre build -o myapp\n  ogre build --keep")]
     Build(BuildArgs),
     /// Interactive brainfuck interpreter REPL
+    #[command(after_help = "Examples:\n  ogre start\n  ogre start --tape-size 60000")]
     Start(StartArgs),
     /// GDB-style interactive debugger
+    #[command(after_help = "Examples:\n  ogre debug hello.bf\n  ogre debug --tape-size 60000 big.bf")]
     Debug(DebugArgs),
     /// Format a brainfuck file in-place (or all project files if omitted)
+    #[command(after_help = "Examples:\n  ogre format hello.bf\n  ogre format --check hello.bf\n  ogre format --diff hello.bf\n  ogre format --indent 2 --grouping 10")]
     Format(FormatArgs),
     /// Static analysis of a brainfuck script (or all project files if omitted)
+    #[command(after_help = "Examples:\n  ogre analyse hello.bf\n  ogre analyse --verbose hello.bf\n  ogre analyse --in-place hello.bf")]
     Analyse(AnalyseArgs),
     /// Run structured tests from a JSON file (or all project test suites if omitted)
+    #[command(after_help = "Examples:\n  ogre test tests/basic.json\n  ogre test  # runs all project test suites")]
     Test(TestArgs),
     /// Scaffold a new brainfuck project directory
+    #[command(after_help = "Examples:\n  ogre new myproject\n  ogre new myproject --with-std")]
     New(NewArgs),
     /// Generate brainfuck code for common patterns
-    #[command(subcommand)]
+    #[command(subcommand, after_help = "Examples:\n  ogre generate helloworld\n  ogre generate string \"Hello!\" -o hello.bf\n  ogre generate loop 10")]
     Generate(GenerateCommands),
     /// Browse the built-in standard library
-    #[command(subcommand)]
+    #[command(subcommand, after_help = "Examples:\n  ogre stdlib list\n  ogre stdlib show io\n  ogre stdlib show math")]
     Stdlib(StdlibCommands),
     /// Validate brackets, imports, and calls (exit 0 if OK, 1 if errors)
     #[command(after_help = "Examples:\n  ogre check hello.bf\n  ogre check  # checks all project files")]
@@ -79,6 +89,12 @@ enum Commands {
     /// Benchmark a brainfuck program (instruction count, wall time, cells touched)
     #[command(after_help = "Examples:\n  ogre bench hello.bf\n  ogre bench --tape-size 60000 big.bf")]
     Bench(BenchArgs),
+    /// Generate documentation from @doc comments and @fn definitions
+    #[command(after_help = "Examples:\n  ogre doc hello.bf\n  ogre doc --stdlib\n  ogre doc hello.bf -o docs.md")]
+    Doc(DocArgs),
+    /// Trace execution of a brainfuck program (print tape state per instruction)
+    #[command(after_help = "Examples:\n  ogre trace hello.bf\n  ogre trace --every 100 hello.bf\n  ogre trace --tape-size 1000 hello.bf")]
+    Trace(TraceArgs),
 }
 
 // ---- Per-subcommand arg structs ----
@@ -90,6 +106,9 @@ struct RunArgs {
     /// Tape size (number of cells, default 30000)
     #[arg(long)]
     tape_size: Option<usize>,
+    /// Watch the file for changes and re-run automatically
+    #[arg(short = 'w', long)]
+    watch: bool,
 }
 
 #[derive(Args)]
@@ -102,6 +121,9 @@ struct CompileArgs {
     /// Keep the intermediate .c file
     #[arg(short = 'k', long)]
     keep: bool,
+    /// Compilation target: "native" (default) or "wasm"
+    #[arg(long, default_value = "native")]
+    target: String,
 }
 
 #[derive(Args)]
@@ -152,6 +174,9 @@ struct FormatArgs {
     /// Check formatting without modifying files (exit 1 if unformatted)
     #[arg(long)]
     check: bool,
+    /// Show a diff of what the formatter would change (without modifying files)
+    #[arg(long)]
+    diff: bool,
 }
 
 #[derive(Args)]
@@ -170,6 +195,9 @@ struct AnalyseArgs {
 struct TestArgs {
     /// Path to the JSON test file (runs all project test suites if omitted)
     test_file: Option<String>,
+    /// Show verbose per-test output
+    #[arg(long)]
+    verbose: bool,
 }
 
 #[derive(Args)]
@@ -218,6 +246,30 @@ struct BenchArgs {
     tape_size: Option<usize>,
 }
 
+#[derive(Args)]
+struct DocArgs {
+    /// Path to the brainfuck file (uses project entry if omitted)
+    file: Option<String>,
+    /// Generate documentation for the standard library
+    #[arg(long)]
+    stdlib: bool,
+    /// Output file (prints to stdout if omitted)
+    #[arg(short = 'o', long)]
+    output: Option<String>,
+}
+
+#[derive(Args)]
+struct TraceArgs {
+    /// Path to the brainfuck file (uses project entry if omitted)
+    file: Option<String>,
+    /// Tape size (number of cells, default 30000)
+    #[arg(long)]
+    tape_size: Option<usize>,
+    /// Print trace every N instructions (default: every instruction)
+    #[arg(long, default_value = "1")]
+    every: usize,
+}
+
 #[derive(Subcommand)]
 enum StdlibCommands {
     /// List all available standard library modules
@@ -254,7 +306,7 @@ struct GenerateLoopArgs {
 
 // ---- main ----
 
-fn main() -> Result<()> {
+fn main() {
     let cli = Cli::parse();
 
     // Handle --no-color flag and NO_COLOR env var
@@ -262,11 +314,30 @@ fn main() -> Result<()> {
         set_override(false);
     }
 
+    if let Err(e) = run(cli) {
+        eprintln!(
+            "{} {}",
+            colored::Colorize::red("error:"),
+            e
+        );
+        process::exit(1);
+    }
+}
+
+fn run(cli: Cli) -> Result<()> {
+    let verbosity = if cli.quiet {
+        Verbosity::Quiet
+    } else if cli.verbose {
+        Verbosity::Verbose
+    } else {
+        Verbosity::Normal
+    };
+
     match cli.command {
         Commands::Run(args) => {
             let tape_size = args.tape_size.unwrap_or(30_000);
-            match args.file {
-                Some(f) => run::run_file_with_tape_size(Path::new(&f), tape_size)?,
+            let file = match args.file {
+                Some(f) => std::path::PathBuf::from(f),
                 None => {
                     let (proj, base) = require_project()?;
                     let ts = proj
@@ -274,54 +345,119 @@ fn main() -> Result<()> {
                         .as_ref()
                         .and_then(|b| b.tape_size)
                         .unwrap_or(tape_size);
+                    let dep_fns = proj.collect_dependency_functions(&base)?;
                     let entry = proj.entry_path(&base);
-                    run::run_file_with_tape_size(&entry, ts)?;
+                    if args.watch {
+                        run::run_file_watch(&entry, ts)?;
+                    } else if dep_fns.is_empty() {
+                        run::run_file_with_tape_size(&entry, ts)?;
+                    } else {
+                        run::run_file_with_deps(&entry, ts, &dep_fns)?;
+                    }
+                    return Ok(());
                 }
+            };
+            if args.watch {
+                run::run_file_watch(&file, tape_size)?;
+            } else {
+                run::run_file_with_tape_size(&file, tape_size)?;
             }
         }
 
         Commands::Compile(args) => {
-            let file = match args.file {
-                Some(f) => std::path::PathBuf::from(f),
+            let (file, dep_fns) = match args.file {
+                Some(f) => (std::path::PathBuf::from(f), std::collections::HashMap::new()),
                 None => {
                     let (proj, base) = require_project()?;
-                    proj.entry_path(&base)
+                    let deps = proj.collect_dependency_functions(&base)?;
+                    (proj.entry_path(&base), deps)
                 }
             };
-            compile::compile(&file, args.output.as_deref(), args.keep)?;
+            match args.target.as_str() {
+                "wasm" => {
+                    compile_wasm::compile_to_wasm(
+                        &file,
+                        args.output.as_deref(),
+                        30_000,
+                        verbosity,
+                    )?;
+                }
+                "native" | "" => {
+                    if dep_fns.is_empty() {
+                        compile::compile_ex(
+                            &file,
+                            args.output.as_deref(),
+                            args.keep,
+                            verbosity,
+                        )?;
+                    } else {
+                        compile::compile_with_deps_ex(
+                            &file,
+                            args.output.as_deref(),
+                            args.keep,
+                            30_000,
+                            verbosity,
+                            &dep_fns,
+                        )?;
+                    }
+                }
+                other => {
+                    bail!("unknown target {:?}. Use \"native\" or \"wasm\".", other);
+                }
+            }
         }
 
         Commands::Build(args) => {
             let (proj, base) = require_project()?;
             let entry = proj.entry_path(&base);
+            let dep_fns = proj.collect_dependency_functions(&base)?;
             let out_name = args
                 .output
                 .as_deref()
                 .unwrap_or(&proj.project.name)
                 .to_string();
-            compile::compile(&entry, Some(&out_name), args.keep)?;
-            let desc = proj
-                .project
-                .description
-                .as_deref()
-                .filter(|d| !d.is_empty());
-            let author = proj.project.author.as_deref().filter(|a| !a.is_empty());
-            match (desc, author) {
-                (Some(d), Some(a)) => println!(
-                    "Built {} v{} — {} (by {})",
-                    proj.project.name, proj.project.version, d, a
-                ),
-                (Some(d), None) => println!(
-                    "Built {} v{} — {}",
-                    proj.project.name, proj.project.version, d
-                ),
-                _ => println!("Built {} v{}", proj.project.name, proj.project.version),
+            if dep_fns.is_empty() {
+                compile::compile_ex(&entry, Some(&out_name), args.keep, verbosity)?;
+            } else {
+                compile::compile_with_deps_ex(&entry, Some(&out_name), args.keep, 30_000, verbosity, &dep_fns)?;
+            }
+            if !verbosity.is_quiet() {
+                let desc = proj
+                    .project
+                    .description
+                    .as_deref()
+                    .filter(|d| !d.is_empty());
+                let author = proj.project.author.as_deref().filter(|a| !a.is_empty());
+                match (desc, author) {
+                    (Some(d), Some(a)) => println!(
+                        "Built {} v{} — {} (by {})",
+                        proj.project.name, proj.project.version, d, a
+                    ),
+                    (Some(d), None) => println!(
+                        "Built {} v{} — {}",
+                        proj.project.name, proj.project.version, d
+                    ),
+                    _ => println!("Built {} v{}", proj.project.name, proj.project.version),
+                }
             }
         }
 
         Commands::Start(args) => {
             let tape_size = args.tape_size.unwrap_or(30_000);
-            start::start_repl_with_tape_size(tape_size)?;
+            // If there's a project, preload its @fn definitions
+            match OgreProject::find()? {
+                Some((proj, base)) => {
+                    let ts = proj
+                        .build
+                        .as_ref()
+                        .and_then(|b| b.tape_size)
+                        .unwrap_or(tape_size);
+                    start::start_repl_project(ts, &proj, &base)?;
+                }
+                None => {
+                    start::start_repl_with_tape_size(tape_size)?;
+                }
+            }
         }
 
         Commands::Debug(args) => {
@@ -336,7 +472,12 @@ fn main() -> Result<()> {
                         .and_then(|b| b.tape_size)
                         .unwrap_or(tape_size);
                     let entry = proj.entry_path(&base);
-                    debug::debug_file_with_tape_size(&entry, ts)?;
+                    let dep_fns = proj.collect_dependency_functions(&base)?;
+                    if dep_fns.is_empty() {
+                        debug::debug_file_with_tape_size(&entry, ts)?;
+                    } else {
+                        debug::debug_file_with_deps(&entry, ts, &dep_fns)?;
+                    }
                 }
             }
         }
@@ -349,6 +490,7 @@ fn main() -> Result<()> {
                 label_functions: args.label_functions,
                 preserve_comments: args.preserve_comments,
                 check: args.check,
+                diff: args.diff,
             };
             let mut all_formatted = true;
             match args.file {
@@ -360,11 +502,11 @@ fn main() -> Result<()> {
                 None => {
                     let (proj, base) = require_project()?;
                     let files = proj.resolve_include_files(&base)?;
-                    if files.is_empty() {
+                    if files.is_empty() && !verbosity.is_quiet() {
                         println!("No .bf files found in project include paths.");
                     }
                     for f in &files {
-                        if !opts.check {
+                        if !opts.check && !verbosity.is_quiet() {
                             println!("Formatting: {}", f.display());
                         }
                         if !format::format_file(f, &opts)? {
@@ -373,55 +515,82 @@ fn main() -> Result<()> {
                     }
                 }
             }
-            if opts.check && !all_formatted {
+            if (opts.check || opts.diff) && !all_formatted {
                 process::exit(1);
             }
         }
 
-        Commands::Analyse(args) => match args.file {
-            Some(f) => analyse::analyse_file(Path::new(&f), args.verbose, args.in_place)?,
-            None => {
-                let (proj, base) = require_project()?;
-                let files = proj.resolve_include_files(&base)?;
-                if files.is_empty() {
-                    println!("No .bf files found in project include paths.");
-                }
-                for f in &files {
-                    println!("=== {} ===", f.display());
-                    analyse::analyse_file(f, args.verbose, args.in_place)?;
+        Commands::Analyse(args) => {
+            let analyse_verbose = args.verbose || verbosity.is_verbose();
+            match args.file {
+                Some(f) => analyse::analyse_file(Path::new(&f), analyse_verbose, args.in_place)?,
+                None => {
+                    let (proj, base) = require_project()?;
+                    let files = proj.resolve_include_files(&base)?;
+                    if files.is_empty() && !verbosity.is_quiet() {
+                        println!("No .bf files found in project include paths.");
+                    }
+                    for f in &files {
+                        if !verbosity.is_quiet() {
+                            println!("=== {} ===", f.display());
+                        }
+                        analyse::analyse_file(f, analyse_verbose, args.in_place)?;
+                    }
                 }
             }
-        },
+        }
 
-        Commands::Test(args) => match args.test_file {
-            Some(f) => test_runner::run_tests(Path::new(&f))?,
-            None => {
-                let (proj, base) = require_project()?;
-                test_runner::run_project_tests(&proj, &base)?;
+        Commands::Test(args) => {
+            let test_verbosity = if args.verbose {
+                Verbosity::Verbose
+            } else {
+                verbosity
+            };
+            match args.test_file {
+                Some(f) => test_runner::run_tests_ex(Path::new(&f), test_verbosity)?,
+                None => {
+                    let (proj, base) = require_project()?;
+                    test_runner::run_project_tests_ex(&proj, &base, test_verbosity)?;
+                }
             }
-        },
+        }
 
         Commands::New(args) => {
-            new::new_project(&args.name, args.with_std)?;
+            new::new_project_ex(&args.name, args.with_std, verbosity)?;
         }
 
         Commands::Check(args) => {
             let mut all_ok = true;
             match args.file {
                 Some(f) => {
-                    if !check::check_and_report(Path::new(&f))? {
+                    if !check::check_and_report_ex(Path::new(&f), verbosity)? {
                         all_ok = false;
                     }
                 }
                 None => {
                     let (proj, base) = require_project()?;
+                    let dep_fns = proj.collect_dependency_functions(&base)?;
                     let files = proj.resolve_include_files(&base)?;
-                    if files.is_empty() {
+                    if files.is_empty() && !verbosity.is_quiet() {
                         println!("No .bf files found in project include paths.");
                     }
                     for f in &files {
-                        if !check::check_and_report(f)? {
-                            all_ok = false;
+                        if dep_fns.is_empty() {
+                            if !check::check_and_report_ex(f, verbosity)? {
+                                all_ok = false;
+                            }
+                        } else {
+                            let result = check::check_file_with_deps(f, &dep_fns)?;
+                            if result.errors.is_empty() {
+                                if !verbosity.is_quiet() {
+                                    println!("{}: {}", f.display(), colored::Colorize::green("OK"));
+                                }
+                            } else {
+                                for err in &result.errors {
+                                    println!("{}: {} {}", f.display(), colored::Colorize::red("ERROR"), err);
+                                }
+                                all_ok = false;
+                            }
                         }
                     }
                 }
@@ -432,21 +601,59 @@ fn main() -> Result<()> {
         }
 
         Commands::Pack(args) => {
-            let file = match args.file {
-                Some(f) => std::path::PathBuf::from(f),
+            let (file, dep_fns) = match args.file {
+                Some(f) => (std::path::PathBuf::from(f), std::collections::HashMap::new()),
                 None => {
                     let (proj, base) = require_project()?;
-                    proj.entry_path(&base)
+                    let deps = proj.collect_dependency_functions(&base)?;
+                    (proj.entry_path(&base), deps)
                 }
             };
-            pack::pack_and_output(&file, args.output.as_deref(), args.optimize)?;
+            if dep_fns.is_empty() {
+                pack::pack_and_output_ex(&file, args.output.as_deref(), args.optimize, verbosity)?;
+            } else {
+                pack::pack_and_output_with_deps(&file, args.output.as_deref(), args.optimize, verbosity, &dep_fns)?;
+            }
         }
 
         Commands::Init => {
-            init::init_project()?;
+            init::init_project_ex(verbosity)?;
         }
 
         Commands::Bench(args) => {
+            let tape_size = args.tape_size.unwrap_or(30_000);
+            let (file, dep_fns) = match args.file {
+                Some(f) => (std::path::PathBuf::from(f), std::collections::HashMap::new()),
+                None => {
+                    let (proj, base) = require_project()?;
+                    let deps = proj.collect_dependency_functions(&base)?;
+                    (proj.entry_path(&base), deps)
+                }
+            };
+            if dep_fns.is_empty() {
+                bench::bench_and_report_ex(&file, tape_size, verbosity)?;
+            } else {
+                bench::bench_and_report_with_deps(&file, tape_size, verbosity, &dep_fns)?;
+            }
+        }
+
+        Commands::Doc(args) => {
+            let path = match &args.file {
+                Some(f) => Some(std::path::PathBuf::from(f)),
+                None if !args.stdlib => {
+                    let (proj, base) = require_project()?;
+                    Some(proj.entry_path(&base))
+                }
+                None => None,
+            };
+            doc::doc_and_output(
+                path.as_deref(),
+                args.stdlib,
+                args.output.as_deref(),
+            )?;
+        }
+
+        Commands::Trace(args) => {
             let tape_size = args.tape_size.unwrap_or(30_000);
             let file = match args.file {
                 Some(f) => std::path::PathBuf::from(f),
@@ -455,7 +662,7 @@ fn main() -> Result<()> {
                     proj.entry_path(&base)
                 }
             };
-            bench::bench_and_report(&file, tape_size)?;
+            trace::trace_file(&file, tape_size, args.every)?;
         }
 
         Commands::Stdlib(cmd) => match cmd {

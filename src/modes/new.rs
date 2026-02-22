@@ -2,7 +2,13 @@ use anyhow::Result;
 use std::fs;
 use std::path::Path;
 
+use crate::verbosity::Verbosity;
+
 pub fn new_project(name: &str, with_std: bool) -> Result<()> {
+    new_project_ex(name, with_std, Verbosity::Normal)
+}
+
+pub fn new_project_ex(name: &str, with_std: bool, verbosity: Verbosity) -> Result<()> {
     let dir = Path::new(name);
     if dir.exists() {
         anyhow::bail!("directory '{}' already exists", name);
@@ -56,12 +62,14 @@ file = "tests/basic.json"
     );
     fs::write(dir.join("tests/basic.json"), test_content)?;
 
-    println!("Created project '{}':", name);
-    println!("  {}/ogre.toml", name);
-    println!("  {}/src/main.bf", name);
-    println!("  {}/tests/basic.json", name);
-    if with_std {
-        println!("  (with standard library imports)");
+    if !verbosity.is_quiet() {
+        println!("Created project '{}':", name);
+        println!("  {}/ogre.toml", name);
+        println!("  {}/src/main.bf", name);
+        println!("  {}/tests/basic.json", name);
+        if with_std {
+            println!("  (with standard library imports)");
+        }
     }
 
     Ok(())

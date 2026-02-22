@@ -1,0 +1,8 @@
+[
+  {
+    "name": "uses stdlib functions",
+    "brainfuck": "../src/main.bf",
+    "input": "",
+    "output_regex": ".\\n"
+  }
+]

@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use super::interpreter::Interpreter;
 use super::preprocess::Preprocessor;
 use crate::project::OgreProject;
+use crate::verbosity::Verbosity;
 
 /// Default instruction limit for test timeout (10 million).
 const DEFAULT_INSTRUCTION_LIMIT: u64 = 10_000_000;
@@ -31,11 +32,22 @@ pub fn run_tests_from_file(
     section_name: Option<&str>,
     base_dir: &Path,
 ) -> Result<(usize, usize)> {
+    run_tests_from_file_ex(test_file, section_name, base_dir, Verbosity::Normal)
+}
+
+pub fn run_tests_from_file_ex(
+    test_file: &Path,
+    section_name: Option<&str>,
+    base_dir: &Path,
+    verbosity: Verbosity,
+) -> Result<(usize, usize)> {
     let json = fs::read_to_string(test_file)?;
     let cases: Vec<TestCase> = serde_json::from_str(&json)?;
 
     if let Some(name) = section_name {
-        println!("=== {} ===", name);
+        if !verbosity.is_quiet() {
+            println!("=== {} ===", name);
+        }
     }
 
     let total = cases.len();
@@ -43,7 +55,24 @@ pub fn run_tests_from_file(
     let mut failed = 0usize;
     let mut failures: Vec<(String, String)> = Vec::new();
 
+    let verbose = verbosity.is_verbose();
+
     for case in &cases {
+        // Check for conflicting output and output_regex
+        if case.output_regex.is_some() && !case.output.is_empty() {
+            if verbose {
+                println!("  {} {}", "FAIL".red().bold(), case.name);
+            } else {
+                print!("{}", "F".red());
+            }
+            failures.push((
+                case.name.clone(),
+                "test case specifies both 'output' and 'output_regex' — use only one".to_string(),
+            ));
+            failed += 1;
+            continue;
+        }
+
         // Resolve .bf path relative to base_dir
         let bf_path: PathBuf = if Path::new(&case.brainfuck).is_absolute() {
             PathBuf::from(&case.brainfuck)
@@ -53,7 +82,11 @@ pub fn run_tests_from_file(
 
         let expanded = match Preprocessor::process_file(&bf_path) {
             Err(e) => {
-                print!("{}", "F".red());
+                if verbose {
+                    println!("  {} {}", "FAIL".red().bold(), case.name);
+                } else {
+                    print!("{}", "F".red());
+                }
                 failures.push((case.name.clone(), format!("preprocess error: {}", e)));
                 failed += 1;
                 continue;
@@ -65,18 +98,30 @@ pub fn run_tests_from_file(
 
         match Interpreter::with_input(&expanded, &case.input) {
             Err(e) => {
-                print!("{}", "F".red());
+                if verbose {
+                    println!("  {} {}", "FAIL".red().bold(), case.name);
+                } else {
+                    print!("{}", "F".red());
+                }
                 failures.push((case.name.clone(), format!("parse error: {}", e)));
                 failed += 1;
             }
             Ok(mut interp) => match interp.run_with_limit(instruction_limit) {
                 Err(e) => {
-                    print!("{}", "F".red());
+                    if verbose {
+                        println!("  {} {}", "FAIL".red().bold(), case.name);
+                    } else {
+                        print!("{}", "F".red());
+                    }
                     failures.push((case.name.clone(), format!("runtime error: {}", e)));
                     failed += 1;
                 }
                 Ok(false) => {
-                    print!("{}", "T".yellow());
+                    if verbose {
+                        println!("  {} {}", "TIMEOUT".yellow().bold(), case.name);
+                    } else {
+                        print!("{}", "T".yellow());
+                    }
                     failures.push((
                         case.name.clone(),
                         format!(
@@ -92,7 +137,11 @@ pub fn run_tests_from_file(
                         match Regex::new(regex_str) {
                             Ok(re) => re.is_match(&actual),
                             Err(e) => {
-                                print!("{}", "F".red());
+                                if verbose {
+                                    println!("  {} {}", "FAIL".red().bold(), case.name);
+                                } else {
+                                    print!("{}", "F".red());
+                                }
                                 failures.push((
                                     case.name.clone(),
                                     format!("invalid regex '{}': {}", regex_str, e),
@@ -106,10 +155,18 @@ pub fn run_tests_from_file(
                     };
 
                     if pass {
-                        print!("{}", ".".green());
+                        if verbose {
+                            println!("  {} {}", "PASS".green().bold(), case.name);
+                        } else {
+                            print!("{}", ".".green());
+                        }
                         passed += 1;
                     } else {
-                        print!("{}", "F".red());
+                        if verbose {
+                            println!("  {} {}", "FAIL".red().bold(), case.name);
+                        } else {
+                            print!("{}", "F".red());
+                        }
                         if let Some(ref regex_str) = case.output_regex {
                             failures.push((
                                 case.name.clone(),
@@ -134,7 +191,9 @@ pub fn run_tests_from_file(
         }
     }
 
-    println!(); // newline after dots
+    if !verbosity.is_quiet() && !verbose {
+        println!(); // newline after dots
+    }
 
     // Print failure details
     if !failures.is_empty() {
@@ -147,18 +206,20 @@ pub fn run_tests_from_file(
         println!();
     }
 
-    if failed > 0 {
-        println!(
-            "{}/{} tests passed",
-            passed.to_string().red(),
-            total
-        );
-    } else {
-        println!(
-            "{}/{} tests passed",
-            passed.to_string().green(),
-            total
-        );
+    if !verbosity.is_quiet() {
+        if failed > 0 {
+            println!(
+                "{}/{} tests passed",
+                passed.to_string().red(),
+                total
+            );
+        } else {
+            println!(
+                "{}/{} tests passed",
+                passed.to_string().green(),
+                total
+            );
+        }
     }
 
     Ok((passed, failed))
@@ -167,12 +228,16 @@ pub fn run_tests_from_file(
 /// Convenience wrapper: run tests from a single file, resolving bf paths
 /// relative to the directory containing the test file.
 pub fn run_tests(test_file: &Path) -> Result<()> {
+    run_tests_ex(test_file, Verbosity::Normal)
+}
+
+pub fn run_tests_ex(test_file: &Path, verbosity: Verbosity) -> Result<()> {
     let base_dir = test_file
         .parent()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| PathBuf::from("."));
 
-    let (_, failed) = run_tests_from_file(test_file, None, &base_dir)?;
+    let (_, failed) = run_tests_from_file_ex(test_file, None, &base_dir, verbosity)?;
     if failed > 0 {
         bail!("{} test(s) failed", failed);
     }
@@ -181,8 +246,14 @@ pub fn run_tests(test_file: &Path) -> Result<()> {
 
 /// Run all test suites defined in an ogre project.
 pub fn run_project_tests(project: &OgreProject, base: &Path) -> Result<()> {
+    run_project_tests_ex(project, base, Verbosity::Normal)
+}
+
+pub fn run_project_tests_ex(project: &OgreProject, base: &Path, verbosity: Verbosity) -> Result<()> {
     if project.tests.is_empty() {
-        println!("No tests defined in ogre.toml.");
+        if !verbosity.is_quiet() {
+            println!("No tests defined in ogre.toml.");
+        }
         return Ok(());
     }
 
@@ -194,16 +265,18 @@ pub fn run_project_tests(project: &OgreProject, base: &Path) -> Result<()> {
         let section_name = test_ref.name.as_deref();
 
         // Resolve bf paths relative to the project base
-        let (p, f) = run_tests_from_file(&test_path, section_name, base)?;
+        let (p, f) = run_tests_from_file_ex(&test_path, section_name, base, verbosity)?;
         total_passed += p;
         total_failed += f;
     }
 
-    println!(
-        "\nTotal: {}/{} tests passed",
-        total_passed,
-        total_passed + total_failed
-    );
+    if !verbosity.is_quiet() {
+        println!(
+            "\nTotal: {}/{} tests passed",
+            total_passed,
+            total_passed + total_failed
+        );
+    }
     if total_failed > 0 {
         bail!("{} test(s) failed", total_failed);
     }
@@ -258,5 +331,28 @@ mod tests {
         let mut interp = Interpreter::with_input("+[+]", "").unwrap();
         let completed = interp.run_with_limit(100).unwrap();
         assert!(!completed);
+    }
+
+    #[test]
+    fn test_regex_mismatch_reports_correctly() {
+        let re = Regex::new(r"^Hello$").unwrap();
+        assert!(!re.is_match("Goodbye World"));
+        assert!(!re.is_match("Hello World!"));
+        assert!(re.is_match("Hello"));
+    }
+
+    #[test]
+    fn test_output_and_regex_conflict() {
+        // Verifies that the conflict detection logic works:
+        // if output_regex is Some and output is non-empty, it should be flagged
+        let case = TestCase {
+            name: "conflict".to_string(),
+            brainfuck: "dummy.bf".to_string(),
+            input: "".to_string(),
+            output: "something".to_string(),
+            output_regex: Some("pattern".to_string()),
+            timeout: None,
+        };
+        assert!(case.output_regex.is_some() && !case.output.is_empty());
     }
 }

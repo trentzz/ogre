@@ -1,4 +1,6 @@
-use anyhow::{bail, Result};
+use anyhow::Result;
+
+use crate::error::OgreError;
 
 /// A single bytecode operation in the IR.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -12,6 +14,12 @@ pub enum Op {
     JumpIfZero(usize),
     JumpIfNonZero(usize),
     Clear,
+    /// Move current cell's value to cell at `data_ptr + offset`, zeroing current cell.
+    /// Recognized from patterns like `[->+<]` (MoveAdd(1)) or `[->>+<<]` (MoveAdd(2)).
+    MoveAdd(isize),
+    /// Move current cell's value by subtracting it from cell at `data_ptr + offset`.
+    /// Recognized from patterns like `[->-<]` (MoveSub(1)).
+    MoveSub(isize),
 }
 
 /// A compiled brainfuck program represented as a sequence of IR operations.
@@ -67,7 +75,7 @@ impl Program {
                 ']' => {
                     let open = bracket_stack
                         .pop()
-                        .ok_or_else(|| anyhow::anyhow!("unmatched `]`"))?;
+                        .ok_or(OgreError::UnmatchedCloseBracket)?;
                     let close = ops.len();
                     ops.push(Op::JumpIfNonZero(open));
                     // Patch the opening bracket to point past the closing
@@ -78,7 +86,7 @@ impl Program {
         }
 
         if let Some(pos) = bracket_stack.pop() {
-            bail!("unmatched `[` at op index {}", pos);
+            return Err(OgreError::UnmatchedOpenBracket(pos).into());
         }
 
         Ok(Program { ops })
@@ -87,6 +95,7 @@ impl Program {
     /// Apply optimization passes to the program.
     pub fn optimize(&mut self) {
         self.optimize_clear_idiom();
+        self.optimize_move_idiom();
         self.optimize_cancellation();
         self.optimize_dead_store();
         self.reindex_jumps();
@@ -122,6 +131,49 @@ impl Program {
                 Op::JumpIfZero(_) => out.push('['),
                 Op::JumpIfNonZero(_) => out.push(']'),
                 Op::Clear => out.push_str("[-]"),
+                Op::MoveAdd(offset) => {
+                    // [->+<] for positive, [-<+>] for negative
+                    out.push_str("[-");
+                    if *offset > 0 {
+                        for _ in 0..*offset {
+                            out.push('>');
+                        }
+                        out.push('+');
+                        for _ in 0..*offset {
+                            out.push('<');
+                        }
+                    } else {
+                        for _ in 0..offset.unsigned_abs() {
+                            out.push('<');
+                        }
+                        out.push('+');
+                        for _ in 0..offset.unsigned_abs() {
+                            out.push('>');
+                        }
+                    }
+                    out.push(']');
+                }
+                Op::MoveSub(offset) => {
+                    out.push_str("[-");
+                    if *offset > 0 {
+                        for _ in 0..*offset {
+                            out.push('>');
+                        }
+                        out.push('-');
+                        for _ in 0..*offset {
+                            out.push('<');
+                        }
+                    } else {
+                        for _ in 0..offset.unsigned_abs() {
+                            out.push('<');
+                        }
+                        out.push('-');
+                        for _ in 0..offset.unsigned_abs() {
+                            out.push('>');
+                        }
+                    }
+                    out.push(']');
+                }
             }
         }
         out
@@ -140,6 +192,69 @@ impl Program {
             } else {
                 i += 1;
             }
+        }
+    }
+
+    /// Detect `[->+<]` and `[-<+>]` move patterns and replace with `MoveAdd(offset)`.
+    /// Also detects `[->-<]` for `MoveSub(offset)`.
+    /// Pattern: JumpIfZero, Sub(1), Right(n)/Left(n), Add(1)/Sub(1), Left(n)/Right(n), JumpIfNonZero
+    fn optimize_move_idiom(&mut self) {
+        let mut i = 0;
+        while i + 5 < self.ops.len() {
+            if matches!(self.ops[i], Op::JumpIfZero(_))
+                && self.ops[i + 1] == Op::Sub(1)
+                && matches!(self.ops[i + 5], Op::JumpIfNonZero(_))
+            {
+                // Check for [- >n + <n] pattern (MoveAdd forward)
+                if let Op::Right(n) = self.ops[i + 2] {
+                    if self.ops[i + 3] == Op::Add(1) {
+                        if let Op::Left(m) = self.ops[i + 4] {
+                            if n == m {
+                                self.ops
+                                    .splice(i..i + 6, std::iter::once(Op::MoveAdd(n as isize)));
+                                continue;
+                            }
+                        }
+                    }
+                    // Check for [- >n - <n] pattern (MoveSub forward)
+                    if self.ops[i + 3] == Op::Sub(1) {
+                        if let Op::Left(m) = self.ops[i + 4] {
+                            if n == m {
+                                self.ops
+                                    .splice(i..i + 6, std::iter::once(Op::MoveSub(n as isize)));
+                                continue;
+                            }
+                        }
+                    }
+                }
+                // Check for [- <n + >n] pattern (MoveAdd backward)
+                if let Op::Left(n) = self.ops[i + 2] {
+                    if self.ops[i + 3] == Op::Add(1) {
+                        if let Op::Right(m) = self.ops[i + 4] {
+                            if n == m {
+                                self.ops.splice(
+                                    i..i + 6,
+                                    std::iter::once(Op::MoveAdd(-(n as isize))),
+                                );
+                                continue;
+                            }
+                        }
+                    }
+                    // Check for [- <n - >n] pattern (MoveSub backward)
+                    if self.ops[i + 3] == Op::Sub(1) {
+                        if let Op::Right(m) = self.ops[i + 4] {
+                            if n == m {
+                                self.ops.splice(
+                                    i..i + 6,
+                                    std::iter::once(Op::MoveSub(-(n as isize))),
+                                );
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+            i += 1;
         }
     }
 
@@ -435,5 +550,62 @@ mod tests {
         let src: String = std::iter::repeat('+').take(256).collect();
         let prog = Program::from_source(&src).unwrap();
         assert_eq!(prog.ops, vec![Op::Add(0)]);
+    }
+
+    #[test]
+    fn test_move_add_forward() {
+        // [->+<] should optimize to MoveAdd(1)
+        let mut prog = Program::from_source("[->+<]").unwrap();
+        prog.optimize();
+        assert_eq!(prog.ops, vec![Op::MoveAdd(1)]);
+    }
+
+    #[test]
+    fn test_move_add_forward_2() {
+        // [->>+<<] should optimize to MoveAdd(2)
+        let mut prog = Program::from_source("[->>+<<]").unwrap();
+        prog.optimize();
+        assert_eq!(prog.ops, vec![Op::MoveAdd(2)]);
+    }
+
+    #[test]
+    fn test_move_add_backward() {
+        // [-<+>] should optimize to MoveAdd(-1)
+        let mut prog = Program::from_source("[-<+>]").unwrap();
+        prog.optimize();
+        assert_eq!(prog.ops, vec![Op::MoveAdd(-1)]);
+    }
+
+    #[test]
+    fn test_move_sub_forward() {
+        // [->-<] should optimize to MoveSub(1)
+        let mut prog = Program::from_source("[->-<]").unwrap();
+        prog.optimize();
+        assert_eq!(prog.ops, vec![Op::MoveSub(1)]);
+    }
+
+    #[test]
+    fn test_move_add_to_bf_string() {
+        let prog = Program {
+            ops: vec![Op::MoveAdd(1)],
+        };
+        assert_eq!(prog.to_bf_string(), "[->+<]");
+    }
+
+    #[test]
+    fn test_move_add_backward_to_bf_string() {
+        let prog = Program {
+            ops: vec![Op::MoveAdd(-2)],
+        };
+        assert_eq!(prog.to_bf_string(), "[-<<+>>]");
+    }
+
+    #[test]
+    fn test_move_preserves_semantics() {
+        // [->+<] with cell 0 = 5 should: cell 1 += 5, cell 0 = 0
+        let src = "+++++[->+<]";
+        let mut prog_opt = Program::from_source(src).unwrap();
+        prog_opt.optimize();
+        assert!(prog_opt.ops.contains(&Op::MoveAdd(1)));
     }
 }

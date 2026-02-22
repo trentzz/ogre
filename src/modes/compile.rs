@@ -1,10 +1,12 @@
-use anyhow::{bail, Result};
+use anyhow::Result;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 
 use super::ir::{Op, Program};
 use super::preprocess::Preprocessor;
+use crate::error::OgreError;
+use crate::verbosity::Verbosity;
 
 pub fn generate_c(bf_code: &str) -> String {
     generate_c_with_tape_size(bf_code, 30_000)
@@ -27,9 +29,13 @@ pub fn generate_c_with_tape_size(bf_code: &str, tape_size: usize) -> String {
 pub fn generate_c_from_program(program: &Program, tape_size: usize) -> String {
     let mut out = String::new();
     out.push_str("#include <stdio.h>\n");
+    out.push_str("#include <string.h>\n");
     out.push_str("int main() {\n");
-    out.push_str(&format!("    char array[{}] = {{0}};\n", tape_size));
-    out.push_str("    char *ptr = array;\n");
+    out.push_str(&format!("    unsigned char array[{}];\n", tape_size));
+    out.push_str(&format!(
+        "    memset(array, 0, sizeof(array));\n"
+    ));
+    out.push_str("    unsigned char *ptr = array;\n");
 
     let mut indent_level: usize = 1;
 
@@ -84,6 +90,18 @@ pub fn generate_c_from_program(program: &Program, tape_size: usize) -> String {
             Op::Clear => {
                 out.push_str(&format!("{}*ptr = 0;\n", indent));
             }
+            Op::MoveAdd(offset) => {
+                out.push_str(&format!(
+                    "{}*(ptr + {}) += *ptr; *ptr = 0;\n",
+                    indent, offset
+                ));
+            }
+            Op::MoveSub(offset) => {
+                out.push_str(&format!(
+                    "{}*(ptr + {}) -= *ptr; *ptr = 0;\n",
+                    indent, offset
+                ));
+            }
         }
     }
 
@@ -104,11 +122,15 @@ fn find_c_compiler() -> Result<String> {
             return Ok(compiler.to_string());
         }
     }
-    bail!("no C compiler found. Install gcc, clang, or ensure 'cc' is available on PATH")
+    Err(OgreError::CompilerNotFound.into())
 }
 
 pub fn compile(file: &Path, output: Option<&str>, keep: bool) -> Result<()> {
     compile_with_tape_size(file, output, keep, 30_000)
+}
+
+pub fn compile_ex(file: &Path, output: Option<&str>, keep: bool, verbosity: Verbosity) -> Result<()> {
+    compile_with_tape_size_ex(file, output, keep, 30_000, verbosity)
 }
 
 pub fn compile_with_tape_size(
@@ -117,8 +139,42 @@ pub fn compile_with_tape_size(
     keep: bool,
     tape_size: usize,
 ) -> Result<()> {
+    compile_with_tape_size_ex(file, output, keep, tape_size, Verbosity::Normal)
+}
+
+/// Compile with pre-loaded dependency functions available.
+pub fn compile_with_deps_ex(
+    file: &Path,
+    output: Option<&str>,
+    keep: bool,
+    tape_size: usize,
+    verbosity: Verbosity,
+    dep_functions: &std::collections::HashMap<String, String>,
+) -> Result<()> {
+    let expanded = Preprocessor::process_file_with_deps(file, dep_functions)?;
+    compile_expanded(&expanded, file, output, keep, tape_size, verbosity)
+}
+
+pub fn compile_with_tape_size_ex(
+    file: &Path,
+    output: Option<&str>,
+    keep: bool,
+    tape_size: usize,
+    verbosity: Verbosity,
+) -> Result<()> {
     let expanded = Preprocessor::process_file(file)?;
-    let c_code = generate_c_with_tape_size(&expanded, tape_size);
+    compile_expanded(&expanded, file, output, keep, tape_size, verbosity)
+}
+
+fn compile_expanded(
+    expanded: &str,
+    file: &Path,
+    output: Option<&str>,
+    keep: bool,
+    tape_size: usize,
+    verbosity: Verbosity,
+) -> Result<()> {
+    let c_code = generate_c_with_tape_size(expanded, tape_size);
 
     let stem = file
         .file_stem()
@@ -146,14 +202,16 @@ pub fn compile_with_tape_size(
         if !keep {
             let _ = fs::remove_file(&c_path);
         }
-        bail!("{} compilation failed", compiler);
+        return Err(OgreError::CompilationFailed(compiler).into());
     }
 
     if !keep {
         fs::remove_file(&c_path)?;
     }
 
-    println!("Compiled to: {}", out_path);
+    if !verbosity.is_quiet() {
+        println!("Compiled to: {}", out_path);
+    }
     Ok(())
 }
 
@@ -209,8 +267,10 @@ mod tests {
     fn test_generate_c_structure() {
         let c = generate_c("+");
         assert!(c.contains("#include <stdio.h>"));
+        assert!(c.contains("#include <string.h>"));
         assert!(c.contains("int main()"));
-        assert!(c.contains("char array[30000] = {0}"));
+        assert!(c.contains("unsigned char array[30000]"));
+        assert!(c.contains("memset(array, 0, sizeof(array))"));
         assert!(c.contains("return 0;"));
     }
 
@@ -253,6 +313,12 @@ mod tests {
     #[test]
     fn test_generate_c_custom_tape_size() {
         let c = generate_c_with_tape_size("+", 60_000);
-        assert!(c.contains("char array[60000] = {0}"));
+        assert!(c.contains("unsigned char array[60000]"));
+    }
+
+    #[test]
+    fn test_generate_c_move_add() {
+        let c = generate_c("[->+<]");
+        assert!(c.contains("*(ptr + 1) += *ptr; *ptr = 0;"));
     }
 }

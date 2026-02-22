@@ -2,7 +2,13 @@ use anyhow::{bail, Result};
 use std::fs;
 use std::path::Path;
 
+use crate::verbosity::Verbosity;
+
 pub fn init_project() -> Result<()> {
+    init_project_ex(Verbosity::Normal)
+}
+
+pub fn init_project_ex(verbosity: Verbosity) -> Result<()> {
     let toml_path = Path::new("ogre.toml");
     if toml_path.exists() {
         bail!("ogre.toml already exists in current directory");
@@ -67,13 +73,15 @@ file = "tests/basic.json"
         fs::write(&test_file, test_content)?;
     }
 
-    println!("Initialized ogre project '{}' in current directory.", name);
-    println!("  ogre.toml");
-    if !main_bf.exists() {
-        println!("  src/main.bf");
-    }
-    if !test_file.exists() {
-        println!("  tests/basic.json");
+    if !verbosity.is_quiet() {
+        println!("Initialized ogre project '{}' in current directory.", name);
+        println!("  ogre.toml");
+        if !main_bf.exists() {
+            println!("  src/main.bf");
+        }
+        if !test_file.exists() {
+            println!("  tests/basic.json");
+        }
     }
 
     Ok(())

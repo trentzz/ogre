@@ -1,0 +1,8 @@
+[
+  {
+    "name": "echoes input",
+    "brainfuck": "../src/main.bf",
+    "input": "abc",
+    "output": "abc"
+  }
+]

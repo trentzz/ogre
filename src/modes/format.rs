@@ -1,4 +1,6 @@
 use anyhow::Result;
+use colored::Colorize;
+use similar::{ChangeTag, TextDiff};
 use std::fs;
 use std::path::Path;
 
@@ -11,6 +13,7 @@ pub struct FormatOptions {
     pub label_functions: bool,
     pub preserve_comments: bool,
     pub check: bool,
+    pub diff: bool,
 }
 
 impl Default for FormatOptions {
@@ -22,6 +25,7 @@ impl Default for FormatOptions {
             label_functions: false,
             preserve_comments: false,
             check: false,
+            diff: false,
         }
     }
 }
@@ -270,9 +274,48 @@ pub fn format_source(code: &str, opts: &FormatOptions) -> Result<String> {
     Ok(output)
 }
 
+/// Generate a colored unified diff between two strings.
+/// Returns the diff string, or an empty string if they are identical.
+pub fn generate_diff(original: &str, formatted: &str, filename: &str) -> String {
+    if original == formatted {
+        return String::new();
+    }
+
+    let diff = TextDiff::from_lines(original, formatted);
+    let mut output = String::new();
+
+    output.push_str(&format!("--- {}\n", filename).red().to_string());
+    output.push_str(&format!("+++ {}\n", filename).green().to_string());
+
+    for hunk in diff.unified_diff().context_radius(3).iter_hunks() {
+        output.push_str(&format!("{}", hunk.header()).cyan().to_string());
+        for change in hunk.iter_changes() {
+            let line = match change.tag() {
+                ChangeTag::Delete => format!("-{}", change).red().to_string(),
+                ChangeTag::Insert => format!("+{}", change).green().to_string(),
+                ChangeTag::Equal => format!(" {}", change).to_string(),
+            };
+            output.push_str(&line);
+            if change.missing_newline() {
+                output.push('\n');
+            }
+        }
+    }
+
+    output
+}
+
 pub fn format_file(path: &Path, opts: &FormatOptions) -> Result<bool> {
     let source = fs::read_to_string(path)?;
     let formatted = format_source(&source, opts)?;
+    if opts.diff {
+        if source == formatted {
+            return Ok(true);
+        }
+        let diff_output = generate_diff(&source, &formatted, &path.display().to_string());
+        print!("{}", diff_output);
+        return Ok(false);
+    }
     if opts.check {
         let already_formatted = source == formatted;
         if already_formatted {
@@ -400,6 +443,89 @@ mod tests {
         assert!(out.contains("@fn greet {"), "got: {:?}", out);
         assert!(out.contains("@call greet"), "got: {:?}", out);
         assert!(out.contains('}'));
+    }
+
+    #[test]
+    fn test_diff_identical_returns_empty() {
+        let source = "+++\n";
+        let formatted = "+++\n";
+        let diff = generate_diff(source, formatted, "test.bf");
+        assert!(diff.is_empty(), "identical files should produce no diff");
+    }
+
+    #[test]
+    fn test_diff_different_returns_content() {
+        let source = "+++---\n";
+        let opts = FormatOptions::default();
+        let formatted = format_source(source, &opts).unwrap();
+        // If formatted differs from source, we should get a non-empty diff
+        if source != formatted {
+            let diff = generate_diff(source, &formatted, "test.bf");
+            assert!(!diff.is_empty(), "different files should produce a diff");
+            // The diff should contain the filename
+            assert!(diff.contains("test.bf"), "diff should mention filename");
+        }
+    }
+
+    #[test]
+    fn test_diff_does_not_modify_file() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("test.bf");
+        let original = "+++[>+++<-]>.";
+        std::fs::File::create(&file_path)
+            .unwrap()
+            .write_all(original.as_bytes())
+            .unwrap();
+
+        let opts = FormatOptions {
+            diff: true,
+            ..Default::default()
+        };
+        let _ = format_file(&file_path, &opts);
+
+        // File should be unchanged
+        let after = std::fs::read_to_string(&file_path).unwrap();
+        assert_eq!(after, original, "diff mode should not modify the file");
+    }
+
+    #[test]
+    fn test_diff_already_formatted_returns_true() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("test.bf");
+        // Write already-formatted content
+        let opts = FormatOptions::default();
+        let formatted = format_source("+++", &opts).unwrap();
+        std::fs::File::create(&file_path)
+            .unwrap()
+            .write_all(formatted.as_bytes())
+            .unwrap();
+
+        let diff_opts = FormatOptions {
+            diff: true,
+            ..Default::default()
+        };
+        let result = format_file(&file_path, &diff_opts).unwrap();
+        assert!(result, "already-formatted file should return true");
+    }
+
+    #[test]
+    fn test_diff_unformatted_returns_false() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("test.bf");
+        std::fs::File::create(&file_path)
+            .unwrap()
+            .write_all(b"+++[>+++<-]>.")
+            .unwrap();
+
+        let opts = FormatOptions {
+            diff: true,
+            ..Default::default()
+        };
+        let result = format_file(&file_path, &opts).unwrap();
+        assert!(!result, "unformatted file should return false");
     }
 
     #[test]

@@ -1,7 +1,9 @@
-use anyhow::{bail, Result};
+use anyhow::Result;
 use std::io::Write;
 
 use super::ir::{Op, Program};
+use super::source_map::{build_op_to_char_map, SourceMap};
+use crate::error::OgreError;
 
 pub const DEFAULT_TAPE_SIZE: usize = 30_000;
 
@@ -23,6 +25,10 @@ pub struct Interpreter {
     cells_touched: Vec<bool>,
     /// Original source chars for display purposes (debugger/REPL).
     source_chars: Vec<char>,
+    /// Optional source map for enhanced error messages.
+    source_map: Option<SourceMap>,
+    /// Maps op indices to character positions in expanded source.
+    op_to_char: Vec<usize>,
 }
 
 impl Interpreter {
@@ -37,6 +43,7 @@ impl Interpreter {
     pub fn with_live_stdin(source: &str) -> Result<Self> {
         let program = Program::from_source(source)?;
         let tape_size = DEFAULT_TAPE_SIZE;
+        let op_to_char = build_op_to_char_map(source);
         Ok(Self {
             tape: vec![0u8; tape_size],
             data_ptr: 0,
@@ -50,11 +57,14 @@ impl Interpreter {
             instruction_count: 0,
             cells_touched: vec![false; tape_size],
             source_chars: source.chars().collect(),
+            source_map: None,
+            op_to_char,
         })
     }
 
     pub fn with_live_stdin_and_tape_size(source: &str, tape_size: usize) -> Result<Self> {
         let program = Program::from_source(source)?;
+        let op_to_char = build_op_to_char_map(source);
         Ok(Self {
             tape: vec![0u8; tape_size],
             data_ptr: 0,
@@ -68,6 +78,8 @@ impl Interpreter {
             instruction_count: 0,
             cells_touched: vec![false; tape_size],
             source_chars: source.chars().collect(),
+            source_map: None,
+            op_to_char,
         })
     }
 
@@ -77,6 +89,7 @@ impl Interpreter {
 
     pub fn with_input_and_tape_size(source: &str, input: &str, tape_size: usize) -> Result<Self> {
         let program = Program::from_source(source)?;
+        let op_to_char = build_op_to_char_map(source);
         Ok(Self {
             tape: vec![0u8; tape_size],
             data_ptr: 0,
@@ -90,6 +103,8 @@ impl Interpreter {
             instruction_count: 0,
             cells_touched: vec![false; tape_size],
             source_chars: source.chars().collect(),
+            source_map: None,
+            op_to_char,
         })
     }
 
@@ -110,6 +125,8 @@ impl Interpreter {
             instruction_count: 0,
             cells_touched: vec![false; DEFAULT_TAPE_SIZE],
             source_chars: source.chars().collect(),
+            source_map: None,
+            op_to_char: vec![],
         })
     }
 
@@ -129,11 +146,26 @@ impl Interpreter {
             instruction_count: 0,
             cells_touched: vec![false; DEFAULT_TAPE_SIZE],
             source_chars: source.chars().collect(),
+            source_map: None,
+            op_to_char: vec![],
         })
     }
 
     pub fn set_streaming(&mut self, streaming: bool) {
         self.streaming = streaming;
+    }
+
+    /// Attach a source map for enhanced error messages.
+    pub fn set_source_map(&mut self, map: SourceMap) {
+        self.source_map = Some(map);
+    }
+
+    /// Get the source location for the current instruction pointer.
+    fn current_source_location(&self) -> Option<String> {
+        self.source_map
+            .as_ref()
+            .and_then(|sm| sm.lookup_op(self.ip, &self.op_to_char))
+            .map(|loc| loc.display_short())
     }
 
     // ---- Accessors ----
@@ -172,6 +204,8 @@ impl Interpreter {
             Op::JumpIfZero(_) => '[',
             Op::JumpIfNonZero(_) => ']',
             Op::Clear => '0',
+            Op::MoveAdd(_) => 'M',
+            Op::MoveSub(_) => 'm',
         }
     }
 
@@ -190,6 +224,8 @@ impl Interpreter {
             Op::JumpIfZero(t) => format!("JumpIfZero({})", t),
             Op::JumpIfNonZero(t) => format!("JumpIfNonZero({})", t),
             Op::Clear => "Clear".to_string(),
+            Op::MoveAdd(o) => format!("MoveAdd({})", o),
+            Op::MoveSub(o) => format!("MoveSub({})", o),
         }
     }
 
@@ -242,14 +278,22 @@ impl Interpreter {
             Op::Right(n) => {
                 let n = *n;
                 if self.data_ptr + n >= self.tape.len() {
-                    bail!("data pointer out of bounds (right)");
+                    let msg = match self.current_source_location() {
+                        Some(loc) => format!("right at {}", loc),
+                        None => "right".to_string(),
+                    };
+                    return Err(OgreError::TapeOverflow(msg).into());
                 }
                 self.data_ptr += n;
             }
             Op::Left(n) => {
                 let n = *n;
                 if self.data_ptr < n {
-                    bail!("data pointer out of bounds (left)");
+                    let msg = match self.current_source_location() {
+                        Some(loc) => format!("left at {}", loc),
+                        None => "left".to_string(),
+                    };
+                    return Err(OgreError::TapeOverflow(msg).into());
                 }
                 self.data_ptr -= n;
             }
@@ -298,6 +342,36 @@ impl Interpreter {
                 self.tape[self.data_ptr] = 0;
                 self.cells_touched[self.data_ptr] = true;
             }
+            Op::MoveAdd(offset) => {
+                let offset = *offset;
+                let target = (self.data_ptr as isize + offset) as usize;
+                if target >= self.tape.len() {
+                    let msg = match self.current_source_location() {
+                        Some(loc) => format!("move target out of bounds at {}", loc),
+                        None => "move target out of bounds".to_string(),
+                    };
+                    return Err(OgreError::TapeOverflow(msg).into());
+                }
+                self.tape[target] = self.tape[target].wrapping_add(self.tape[self.data_ptr]);
+                self.tape[self.data_ptr] = 0;
+                self.cells_touched[self.data_ptr] = true;
+                self.cells_touched[target] = true;
+            }
+            Op::MoveSub(offset) => {
+                let offset = *offset;
+                let target = (self.data_ptr as isize + offset) as usize;
+                if target >= self.tape.len() {
+                    let msg = match self.current_source_location() {
+                        Some(loc) => format!("move target out of bounds at {}", loc),
+                        None => "move target out of bounds".to_string(),
+                    };
+                    return Err(OgreError::TapeOverflow(msg).into());
+                }
+                self.tape[target] = self.tape[target].wrapping_sub(self.tape[self.data_ptr]);
+                self.tape[self.data_ptr] = 0;
+                self.cells_touched[self.data_ptr] = true;
+                self.cells_touched[target] = true;
+            }
         }
 
         self.ip += 1;
@@ -343,6 +417,7 @@ impl Interpreter {
         self.source_chars.extend(source.chars());
         let full_source: String = self.source_chars.iter().collect();
         self.program = Program::from_source(&full_source)?;
+        self.op_to_char = build_op_to_char_map(&full_source);
         Ok(())
     }
 }
@@ -524,5 +599,34 @@ mod tests {
         interp.run().unwrap();
         assert_eq!(interp.tape().len(), 100);
         assert_eq!(interp.tape_value(0), 1);
+    }
+
+    #[test]
+    fn test_move_add_optimized() {
+        // [->+<] moves cell 0 value to cell 1
+        let mut interp = Interpreter::new_optimized("+++++[->+<]").unwrap();
+        interp.run().unwrap();
+        assert_eq!(interp.tape_value(0), 0);
+        assert_eq!(interp.tape_value(1), 5);
+    }
+
+    #[test]
+    fn test_move_sub_optimized() {
+        // Set cell 1 to 10, then move-subtract cell 0 from cell 1
+        let mut interp = Interpreter::new_optimized(">++++++++++<+++++[->-<]").unwrap();
+        interp.run().unwrap();
+        assert_eq!(interp.tape_value(0), 0);
+        assert_eq!(interp.tape_value(1), 5); // 10 - 5
+    }
+
+    #[test]
+    fn test_large_tape_size() {
+        // Verify the interpreter handles a 100,000-cell tape correctly
+        let mut interp = Interpreter::with_tape_size("+>++>+++", 100_000).unwrap();
+        interp.run().unwrap();
+        assert_eq!(interp.tape().len(), 100_000);
+        assert_eq!(interp.tape_value(0), 1);
+        assert_eq!(interp.tape_value(1), 2);
+        assert_eq!(interp.tape_value(2), 3);
     }
 }

@@ -1,0 +1,12 @@
+[project]
+name = "hello"
+version = "0.1.0"
+description = "Classic Hello World program in brainfuck"
+entry = "src/main.bf"
+
+[build]
+include = ["src/"]
+
+[[tests]]
+name = "Basic"
+file = "tests/basic.json"

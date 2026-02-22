@@ -1,0 +1,12 @@
+[project]
+name = "multifile"
+version = "0.1.0"
+description = "Demonstrates multi-file brainfunct projects with @import and @fn"
+entry = "src/main.bf"
+
+[build]
+include = ["src/", "lib/"]
+
+[[tests]]
+name = "Basic"
+file = "tests/basic.json"

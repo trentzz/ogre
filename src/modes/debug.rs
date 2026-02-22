@@ -1,29 +1,63 @@
 use anyhow::Result;
+use colored::Colorize;
 use std::collections::HashSet;
 use std::io::{self, BufRead, Write};
 use std::path::Path;
 
 use super::interpreter::Interpreter;
 use super::preprocess::Preprocessor;
+use super::source_map::{build_op_to_char_map, SourceMap};
 
 pub struct Debugger {
     interp: Interpreter,
     breakpoints: HashSet<usize>,
+    /// Optional source map for showing original file/line/function context.
+    source_map: Option<SourceMap>,
+    /// Maps IR op indices to character positions in expanded source (for source map lookup).
+    op_to_char: Vec<usize>,
 }
 
 impl Debugger {
     pub fn new_live(source: &str) -> Result<Self> {
+        let op_to_char = build_op_to_char_map(source);
         Ok(Self {
             interp: Interpreter::with_live_stdin(source)?,
             breakpoints: HashSet::new(),
+            source_map: None,
+            op_to_char,
         })
     }
 
     pub fn new_live_with_tape_size(source: &str, tape_size: usize) -> Result<Self> {
+        let op_to_char = build_op_to_char_map(source);
         Ok(Self {
             interp: Interpreter::with_live_stdin_and_tape_size(source, tape_size)?,
             breakpoints: HashSet::new(),
+            source_map: None,
+            op_to_char,
         })
+    }
+
+    pub fn new_live_with_source_map(
+        source: &str,
+        tape_size: usize,
+        source_map: SourceMap,
+    ) -> Result<Self> {
+        let op_to_char = build_op_to_char_map(source);
+        Ok(Self {
+            interp: Interpreter::with_live_stdin_and_tape_size(source, tape_size)?,
+            breakpoints: HashSet::new(),
+            source_map: Some(source_map),
+            op_to_char,
+        })
+    }
+
+    /// Get the source location string for an op index, if source map is available.
+    fn source_location_str(&self, op_idx: usize) -> Option<String> {
+        self.source_map
+            .as_ref()
+            .and_then(|sm| sm.lookup_op(op_idx, &self.op_to_char))
+            .map(|loc| loc.display_short())
     }
 
     fn print_status(&self) {
@@ -31,7 +65,29 @@ impl Debugger {
         let desc = self.interp.op_description(ip);
         let dp = self.interp.data_pointer();
         let val = self.interp.tape_value(dp);
-        println!("  ip={}  op={}  dp={}  val={}", ip, desc, dp, val);
+
+        // Show source location if available
+        match self.source_location_str(ip) {
+            Some(loc) => {
+                println!(
+                    "  ip={}  op={}  dp={}  val={}  {}",
+                    ip,
+                    desc.yellow().bold(),
+                    dp,
+                    val,
+                    loc.dimmed()
+                );
+            }
+            None => {
+                println!(
+                    "  ip={}  op={}  dp={}  val={}",
+                    ip,
+                    desc.yellow().bold(),
+                    dp,
+                    val
+                );
+            }
+        }
 
         // Short memory window
         let window = self.interp.peek_window(dp, 3);
@@ -39,7 +95,7 @@ impl Debugger {
             .iter()
             .map(|(addr, v, is_ptr)| {
                 if *is_ptr {
-                    format!(">{}:{}<", addr, v)
+                    format!("{}", format!(">{}:{}<", addr, v).cyan().bold())
                 } else {
                     format!("{}:{}", addr, v)
                 }
@@ -58,6 +114,9 @@ impl Debugger {
 
     pub fn run_repl(&mut self) -> Result<()> {
         println!("ogre debugger — type 'help' for commands");
+        if self.source_map.is_some() {
+            println!("  (source map loaded — showing file/line/function info)");
+        }
         self.print_status();
 
         let stdin = io::stdin();
@@ -92,6 +151,7 @@ impl Debugger {
                     println!("  peek [n]              Show memory around ptr (or cell n)");
                     println!("  show instruction [n]  Show current (or nth) instruction");
                     println!("  show memory           Dump memory cells");
+                    println!("  where                 Show current source location");
                     println!("  exit / quit / q       Quit debugger");
                 }
                 ["step"] => {
@@ -108,7 +168,12 @@ impl Debugger {
                     let idx: usize = n.parse().unwrap();
                     self.breakpoints.insert(idx);
                     let desc = self.interp.op_description(idx);
-                    println!("Breakpoint set at op {} ({})", idx, desc);
+                    println!(
+                        "{} set at op {} ({})",
+                        "Breakpoint".red().bold(),
+                        idx,
+                        desc
+                    );
                 }
                 ["breakpoint", "list"] => {
                     if self.breakpoints.is_empty() {
@@ -118,7 +183,25 @@ impl Debugger {
                         bps.sort_unstable();
                         for bp in bps {
                             let desc = self.interp.op_description(bp);
-                            println!("  breakpoint {} → {}", bp, desc);
+                            let loc = self
+                                .source_location_str(bp)
+                                .unwrap_or_default();
+                            if loc.is_empty() {
+                                println!(
+                                    "  {} {} → {}",
+                                    "breakpoint".red(),
+                                    bp,
+                                    desc
+                                );
+                            } else {
+                                println!(
+                                    "  {} {} → {}  {}",
+                                    "breakpoint".red(),
+                                    bp,
+                                    desc,
+                                    loc.dimmed()
+                                );
+                            }
                         }
                     }
                 }
@@ -164,6 +247,13 @@ impl Debugger {
                     let window = self.interp.peek_window(self.interp.data_pointer(), 10);
                     self.print_window(&window);
                 }
+                ["where"] => {
+                    let ip = self.interp.code_pointer();
+                    match self.source_location_str(ip) {
+                        Some(loc) => println!("  {} → {}", ip, loc),
+                        None => println!("  ip={} (no source map)", ip),
+                    }
+                }
                 _ => {
                     println!("Unknown command: '{}'. Type 'help' for commands.", line);
                 }
@@ -196,7 +286,11 @@ impl Debugger {
                 break;
             }
             if self.breakpoints.contains(&self.interp.code_pointer()) {
-                println!("Hit breakpoint at {}.", self.interp.code_pointer());
+                println!(
+                    "{} at {}.",
+                    "Hit breakpoint".red().bold(),
+                    self.interp.code_pointer()
+                );
                 self.print_status();
                 break;
             }
@@ -211,7 +305,7 @@ impl Debugger {
             .iter()
             .map(|(addr, v, is_ptr)| {
                 if *is_ptr {
-                    format!(">{}:{}<", addr, v)
+                    format!("{}", format!(">{}:{}<", addr, v).cyan().bold())
                 } else {
                     format!("{}:{}", addr, v)
                 }
@@ -222,7 +316,7 @@ impl Debugger {
 
     fn show_instruction(&self, idx: usize) {
         if idx >= self.interp.code_len() {
-            println!("Index {} out of range.", idx);
+            println!("{}", format!("Index {} out of range.", idx).red());
             return;
         }
         let desc = self.interp.op_description(idx);
@@ -233,29 +327,48 @@ impl Debugger {
             .map(|i| {
                 let d = self.interp.op_description(i);
                 if i == idx {
-                    format!("[{}]", d)
+                    format!("{}", format!("[{}]", d).yellow().bold())
                 } else {
                     d
                 }
             })
             .collect();
+
+        // Show source location if available
+        let loc_str = self
+            .source_location_str(idx)
+            .map(|l| format!("  {}", l.dimmed()))
+            .unwrap_or_default();
+
         println!(
-            "  op {}: {} (context: {})",
+            "  op {}: {} (context: {}){}",
             idx,
-            desc,
-            context.join(" ")
+            desc.yellow().bold(),
+            context.join(" "),
+            loc_str
         );
     }
 }
 
 pub fn debug_file(path: &Path) -> Result<()> {
-    let expanded = Preprocessor::process_file(path)?;
-    let mut dbg = Debugger::new_live(&expanded)?;
-    dbg.run_repl()
+    debug_file_with_tape_size(path, super::interpreter::DEFAULT_TAPE_SIZE)
 }
 
 pub fn debug_file_with_tape_size(path: &Path, tape_size: usize) -> Result<()> {
-    let expanded = Preprocessor::process_file(path)?;
+    // Use source-map-aware preprocessing
+    let (expanded, source_map) = Preprocessor::process_file_with_map(path)?;
+    let mut dbg = Debugger::new_live_with_source_map(&expanded, tape_size, source_map)?;
+    dbg.run_repl()
+}
+
+/// Debug a file with pre-loaded dependency functions.
+pub fn debug_file_with_deps(
+    path: &Path,
+    tape_size: usize,
+    dep_functions: &std::collections::HashMap<String, String>,
+) -> Result<()> {
+    // Load deps into preprocessor before processing
+    let expanded = Preprocessor::process_file_with_deps(path, dep_functions)?;
     let mut dbg = Debugger::new_live_with_tape_size(&expanded, tape_size)?;
     dbg.run_repl()
 }

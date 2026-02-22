@@ -1,0 +1,12 @@
+[project]
+name = "fibonacci"
+version = "0.1.0"
+description = "Prints the first few Fibonacci numbers as ASCII characters"
+entry = "src/main.bf"
+
+[build]
+include = ["src/"]
+
+[[tests]]
+name = "Basic"
+file = "tests/basic.json"
