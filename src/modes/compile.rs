@@ -29,12 +29,35 @@ pub fn generate_c_with_tape_size(bf_code: &str, tape_size: usize) -> String {
 pub fn generate_c_from_program(program: &Program, tape_size: usize) -> String {
     let mut out = String::new();
     out.push_str("#include <stdio.h>\n");
-    out.push_str("#include <string.h>\n");
-    out.push_str("int main() {\n");
+    out.push_str("#include <stdlib.h>\n");
+    out.push_str("#include <string.h>\n\n");
+
+    // Argument buffer and bf_getchar: reads from argv buffer first, then stdin
+    out.push_str("static char *arg_buf = NULL;\n");
+    out.push_str("static int arg_pos = 0;\n");
+    out.push_str("static int arg_len = 0;\n\n");
+    out.push_str("static int bf_getchar(void) {\n");
+    out.push_str("    if (arg_pos < arg_len) return (unsigned char)arg_buf[arg_pos++];\n");
+    out.push_str("    return getchar();\n");
+    out.push_str("}\n\n");
+
+    out.push_str("int main(int argc, char *argv[]) {\n");
+    // Build arg_buf from argv[1..] joined with spaces, terminated with newline
+    out.push_str("    if (argc > 1) {\n");
+    out.push_str("        int total = 0;\n");
+    out.push_str("        for (int i = 1; i < argc; i++) total += strlen(argv[i]) + 1;\n");
+    out.push_str("        arg_buf = malloc(total + 1);\n");
+    out.push_str("        arg_buf[0] = '\\0';\n");
+    out.push_str("        for (int i = 1; i < argc; i++) {\n");
+    out.push_str("            if (i > 1) strcat(arg_buf, \" \");\n");
+    out.push_str("            strcat(arg_buf, argv[i]);\n");
+    out.push_str("        }\n");
+    out.push_str("        strcat(arg_buf, \"\\n\");\n");
+    out.push_str("        arg_len = strlen(arg_buf);\n");
+    out.push_str("    }\n");
+
     out.push_str(&format!("    unsigned char array[{}];\n", tape_size));
-    out.push_str(&format!(
-        "    memset(array, 0, sizeof(array));\n"
-    ));
+    out.push_str("    memset(array, 0, sizeof(array));\n");
     out.push_str("    unsigned char *ptr = array;\n");
 
     let mut indent_level: usize = 1;
@@ -74,7 +97,7 @@ pub fn generate_c_from_program(program: &Program, tape_size: usize) -> String {
                 out.push_str(&format!("{}putchar(*ptr);\n", indent));
             }
             Op::Input => {
-                out.push_str(&format!("{}*ptr = getchar();\n", indent));
+                out.push_str(&format!("{}*ptr = bf_getchar();\n", indent));
             }
             Op::JumpIfZero(_) => {
                 out.push_str(&format!("{}while (*ptr) {{\n", indent));
@@ -105,6 +128,7 @@ pub fn generate_c_from_program(program: &Program, tape_size: usize) -> String {
         }
     }
 
+    out.push_str("    if (arg_buf) free(arg_buf);\n");
     out.push_str("    return 0;\n");
     out.push_str("}\n");
     out
@@ -252,7 +276,7 @@ mod tests {
     #[test]
     fn test_generate_c_input() {
         let c = generate_c(",");
-        assert!(c.contains("*ptr = getchar();"));
+        assert!(c.contains("*ptr = bf_getchar();"));
     }
 
     #[test]
@@ -268,10 +292,12 @@ mod tests {
         let c = generate_c("+");
         assert!(c.contains("#include <stdio.h>"));
         assert!(c.contains("#include <string.h>"));
-        assert!(c.contains("int main()"));
+        assert!(c.contains("int main(int argc, char *argv[])"));
         assert!(c.contains("unsigned char array[30000]"));
         assert!(c.contains("memset(array, 0, sizeof(array))"));
         assert!(c.contains("return 0;"));
+        assert!(c.contains("bf_getchar"));
+        assert!(c.contains("arg_buf"));
     }
 
     #[test]
@@ -314,6 +340,17 @@ mod tests {
     fn test_generate_c_custom_tape_size() {
         let c = generate_c_with_tape_size("+", 60_000);
         assert!(c.contains("unsigned char array[60000]"));
+    }
+
+    #[test]
+    fn test_generate_c_argv_support() {
+        let c = generate_c("+");
+        // Verify argv handling code is present
+        assert!(c.contains("int main(int argc, char *argv[])"));
+        assert!(c.contains("arg_buf"));
+        assert!(c.contains("bf_getchar"));
+        assert!(c.contains("if (argc > 1)"));
+        assert!(c.contains("free(arg_buf)"));
     }
 
     #[test]

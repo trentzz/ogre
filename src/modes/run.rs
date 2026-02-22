@@ -35,6 +35,40 @@ pub fn run_file_with_deps(
     Ok(())
 }
 
+/// Run a file with CLI arguments passed via `--`.
+/// Arguments are joined with spaces, terminated with newline, and fed as
+/// input prefix to the BF program. After those bytes are consumed, further
+/// `,` reads come from real stdin.
+pub fn run_file_with_args(
+    path: &Path,
+    tape_size: usize,
+    program_args: &[String],
+) -> Result<()> {
+    let expanded = Preprocessor::process_file(path)?;
+    let arg_input = format!("{}\n", program_args.join(" "));
+    let mut interp = Interpreter::with_input_and_tape_size(&expanded, &arg_input, tape_size)?;
+    interp.set_live_stdin_fallback();
+    interp.set_streaming(true);
+    interp.run()?;
+    Ok(())
+}
+
+/// Run a file with CLI arguments and pre-loaded dependency functions.
+pub fn run_file_with_args_and_deps(
+    path: &Path,
+    tape_size: usize,
+    program_args: &[String],
+    dep_functions: &HashMap<String, String>,
+) -> Result<()> {
+    let expanded = Preprocessor::process_file_with_deps(path, dep_functions)?;
+    let arg_input = format!("{}\n", program_args.join(" "));
+    let mut interp = Interpreter::with_input_and_tape_size(&expanded, &arg_input, tape_size)?;
+    interp.set_live_stdin_fallback();
+    interp.set_streaming(true);
+    interp.run()?;
+    Ok(())
+}
+
 /// Run a file in watch mode — re-run whenever the file changes.
 pub fn run_file_watch(path: &Path, tape_size: usize) -> Result<()> {
     use colored::Colorize;

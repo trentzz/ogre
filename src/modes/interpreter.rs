@@ -155,6 +155,12 @@ impl Interpreter {
         self.streaming = streaming;
     }
 
+    /// Enable live stdin fallback so that after the pre-loaded input buffer
+    /// is consumed, `,` reads from real stdin instead of returning 0.
+    pub fn set_live_stdin_fallback(&mut self) {
+        self.live_stdin = true;
+    }
+
     /// Attach a source map for enhanced error messages.
     pub fn set_source_map(&mut self, map: SourceMap) {
         self.source_map = Some(map);
@@ -617,6 +623,28 @@ mod tests {
         interp.run().unwrap();
         assert_eq!(interp.tape_value(0), 0);
         assert_eq!(interp.tape_value(1), 5); // 10 - 5
+    }
+
+    #[test]
+    fn test_live_stdin_fallback_with_input_buffer() {
+        // Create interpreter with input buffer, then enable live_stdin fallback.
+        // The `,` should read from buffer first, then return 0 (since no live stdin in tests).
+        let mut interp = Interpreter::with_input(",>,>,", "AB").unwrap();
+        interp.set_live_stdin_fallback();
+        interp.run().unwrap();
+        assert_eq!(interp.tape_value(0), b'A');
+        assert_eq!(interp.tape_value(1), b'B');
+        // Third read: buffer exhausted; live_stdin would read from real stdin,
+        // but in test context stdin is closed/empty, so we get 0 or EOF behavior.
+    }
+
+    #[test]
+    fn test_input_with_args_format() {
+        // Simulate how run_file_with_args works: args joined with space + newline
+        let arg_input = "--upper hello\n";
+        let mut interp = Interpreter::with_input(",[.,]", arg_input).unwrap();
+        interp.run().unwrap();
+        assert_eq!(interp.output_as_string(), "--upper hello\n");
     }
 
     #[test]

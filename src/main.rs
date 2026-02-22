@@ -109,6 +109,9 @@ struct RunArgs {
     /// Watch the file for changes and re-run automatically
     #[arg(short = 'w', long)]
     watch: bool,
+    /// Arguments to pass to the brainfuck program (after --)
+    #[arg(last = true)]
+    program_args: Vec<String>,
 }
 
 #[derive(Args)]
@@ -336,6 +339,7 @@ fn run(cli: Cli) -> Result<()> {
     match cli.command {
         Commands::Run(args) => {
             let tape_size = args.tape_size.unwrap_or(30_000);
+            let has_args = !args.program_args.is_empty();
             let file = match args.file {
                 Some(f) => std::path::PathBuf::from(f),
                 None => {
@@ -349,6 +353,10 @@ fn run(cli: Cli) -> Result<()> {
                     let entry = proj.entry_path(&base);
                     if args.watch {
                         run::run_file_watch(&entry, ts)?;
+                    } else if has_args && !dep_fns.is_empty() {
+                        run::run_file_with_args_and_deps(&entry, ts, &args.program_args, &dep_fns)?;
+                    } else if has_args {
+                        run::run_file_with_args(&entry, ts, &args.program_args)?;
                     } else if dep_fns.is_empty() {
                         run::run_file_with_tape_size(&entry, ts)?;
                     } else {
@@ -359,6 +367,8 @@ fn run(cli: Cli) -> Result<()> {
             };
             if args.watch {
                 run::run_file_watch(&file, tape_size)?;
+            } else if has_args {
+                run::run_file_with_args(&file, tape_size, &args.program_args)?;
             } else {
                 run::run_file_with_tape_size(&file, tape_size)?;
             }
