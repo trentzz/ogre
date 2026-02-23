@@ -168,12 +168,7 @@ impl Debugger {
                     let idx: usize = n.parse().unwrap();
                     self.breakpoints.insert(idx);
                     let desc = self.interp.op_description(idx);
-                    println!(
-                        "{} set at op {} ({})",
-                        "Breakpoint".red().bold(),
-                        idx,
-                        desc
-                    );
+                    println!("{} set at op {} ({})", "Breakpoint".red().bold(), idx, desc);
                 }
                 ["breakpoint", "list"] => {
                     if self.breakpoints.is_empty() {
@@ -183,16 +178,9 @@ impl Debugger {
                         bps.sort_unstable();
                         for bp in bps {
                             let desc = self.interp.op_description(bp);
-                            let loc = self
-                                .source_location_str(bp)
-                                .unwrap_or_default();
+                            let loc = self.source_location_str(bp).unwrap_or_default();
                             if loc.is_empty() {
-                                println!(
-                                    "  {} {} → {}",
-                                    "breakpoint".red(),
-                                    bp,
-                                    desc
-                                );
+                                println!("  {} {} → {}", "breakpoint".red(), bp, desc);
                             } else {
                                 println!(
                                     "  {} {} → {}  {}",

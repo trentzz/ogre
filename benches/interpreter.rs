@@ -43,8 +43,7 @@ fn bench_interpret_compact_hello(c: &mut Criterion) {
 fn bench_interpret_optimized(c: &mut Criterion) {
     c.bench_function("interpret compact_hello optimized", |b| {
         b.iter(|| {
-            let mut interp =
-                Interpreter::new_optimized(black_box(COMPACT_HELLO)).unwrap();
+            let mut interp = Interpreter::new_optimized(black_box(COMPACT_HELLO)).unwrap();
             interp.run().unwrap();
         })
     });

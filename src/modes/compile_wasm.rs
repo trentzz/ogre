@@ -33,10 +33,7 @@ pub fn generate_wat(program: &Program, tape_size: usize) -> String {
     //   [tape_size .. tape_size+7] = iov buffer (ptr + len) for fd_write/fd_read
     //   [tape_size+8 .. tape_size+11] = nwritten/nread result
     let total_pages = (tape_size + 16).div_ceil(65536).max(1);
-    out.push_str(&format!(
-        "  (memory (export \"memory\") {})\n",
-        total_pages
-    ));
+    out.push_str(&format!("  (memory (export \"memory\") {})\n", total_pages));
 
     // Global: data pointer (index into tape)
     out.push_str("  (global $dp (mut i32) (i32.const 0))\n");
@@ -160,10 +157,7 @@ pub fn generate_wat(program: &Program, tape_size: usize) -> String {
             Op::MoveAdd(offset) => {
                 // tape[dp + offset] += tape[dp]; tape[dp] = 0;
                 let target_expr = if *offset >= 0 {
-                    format!(
-                        "(i32.add (global.get $dp) (i32.const {}))",
-                        offset
-                    )
+                    format!("(i32.add (global.get $dp) (i32.const {}))", offset)
                 } else {
                     format!(
                         "(i32.sub (global.get $dp) (i32.const {}))",
@@ -184,10 +178,7 @@ pub fn generate_wat(program: &Program, tape_size: usize) -> String {
             Op::MoveSub(offset) => {
                 // tape[dp + offset] -= tape[dp]; tape[dp] = 0;
                 let target_expr = if *offset >= 0 {
-                    format!(
-                        "(i32.add (global.get $dp) (i32.const {}))",
-                        offset
-                    )
+                    format!("(i32.add (global.get $dp) (i32.const {}))", offset)
                 } else {
                     format!(
                         "(i32.sub (global.get $dp) (i32.const {}))",

@@ -31,7 +31,7 @@ When a file argument is omitted from any command that accepts one, ogre walks th
 Preprocess and interpret a brainfuck file.
 
 ```
-ogre run [file] [--tape-size <n>] [-w/--watch]
+ogre run [file|directory] [--tape-size <n>] [-w/--watch] [-- <args>...]
 ```
 
 **Description:** Preprocesses the source (expanding `@import`, `@fn`, `@call` directives), then interprets the resulting pure brainfuck. Stdin and stdout are connected directly to the terminal for interactive I/O.
@@ -40,7 +40,8 @@ ogre run [file] [--tape-size <n>] [-w/--watch]
 
 | Argument | Description |
 |----------|-------------|
-| `file` | Path to a `.bf` file. If omitted, uses the project entry from `ogre.toml`. |
+| `file` | Path to a `.bf` file or a directory containing `ogre.toml`. If omitted, uses the project entry from `ogre.toml` found by walking upward from CWD. |
+| `-- <args>...` | Arguments to pass to the brainfuck program. These are joined with spaces, terminated with a newline, and fed as the initial input buffer. After these bytes are consumed, further `,` reads come from real stdin. |
 
 **Flags:**
 
@@ -56,6 +57,8 @@ ogre run hello.bf
 ogre run --tape-size 60000 big.bf
 ogre run --watch hello.bf
 ogre run                          # uses project entry from ogre.toml
+ogre run examples/convert         # run a project by directory path
+ogre run examples/convert -- --upper hello  # pass args to BF program
 ```
 
 **Exit codes:**

@@ -234,22 +234,16 @@ impl Preprocessor {
                                 .strip_suffix(".bf")
                                 .unwrap_or(path_str.strip_prefix("std/").unwrap());
 
-                            let stdlib_source = get_stdlib_module(module_name)
-                                .ok_or_else(|| {
+                            let stdlib_source =
+                                get_stdlib_module(module_name).ok_or_else(|| {
                                     OgreError::UnknownStdModule(module_name.to_string())
                                 })?;
 
-                            let sentinel =
-                                PathBuf::from(format!("<stdlib:{}>", module_name));
+                            let sentinel = PathBuf::from(format!("<stdlib:{}>", module_name));
                             if !self.imported.contains(&sentinel) {
                                 self.imported.insert(sentinel.clone());
-                                let stdlib_path =
-                                    PathBuf::from(format!("std/{}.bf", module_name));
-                                self.collect_with_tracking(
-                                    stdlib_source,
-                                    base_dir,
-                                    &stdlib_path,
-                                )?;
+                                let stdlib_path = PathBuf::from(format!("std/{}.bf", module_name));
+                                self.collect_with_tracking(stdlib_source, base_dir, &stdlib_path)?;
                             }
                         } else {
                             let import_path = base_dir.join(&path_str);
@@ -266,9 +260,7 @@ impl Preprocessor {
                             self.imported.insert(canonical);
 
                             let imported_source = fs::read_to_string(&import_path)
-                                .map_err(|e| {
-                                    anyhow::anyhow!("@import \"{}\": {}", path_str, e)
-                                })?;
+                                .map_err(|e| anyhow::anyhow!("@import \"{}\": {}", path_str, e))?;
                             let import_base = import_path
                                 .parent()
                                 .map(|p| p.to_path_buf())
@@ -307,29 +299,22 @@ impl Preprocessor {
                         col = Self::update_col_after_skip(source, i, line);
                         skip_whitespace(&chars, &mut i);
                         // Recalculate line/col after whitespace skip
-                        let (new_line, new_col) =
-                            Self::compute_line_col(source, i);
+                        let (new_line, new_col) = Self::compute_line_col(source, i);
                         line = new_line;
                         col = new_col;
                         if i >= chars.len() || chars[i] != '{' {
-                            bail!(
-                                "@fn {}: expected '{{', found {:?}",
-                                name,
-                                chars.get(i)
-                            );
+                            bail!("@fn {}: expected '{{', found {:?}", name, chars.get(i));
                         }
                         i += 1; // skip '{'
                         col += 1;
                         let body = take_brace_body(&chars, &mut i)
                             .map_err(|e| anyhow::anyhow!("@fn {}: {}", name, e))?;
                         // Recalculate after brace body
-                        let (new_line, new_col) =
-                            Self::compute_line_col(source, i);
+                        let (new_line, new_col) = Self::compute_line_col(source, i);
                         line = new_line;
                         col = new_col;
                         if !pending_doc.is_empty() {
-                            self.fn_docs
-                                .insert(name.clone(), pending_doc.clone());
+                            self.fn_docs.insert(name.clone(), pending_doc.clone());
                             pending_doc.clear();
                         }
                         self.fn_origins
@@ -373,11 +358,7 @@ impl Preprocessor {
                             bail!("@const {}: expected numeric value", name);
                         }
                         let value: usize = num_str.parse().map_err(|_| {
-                            anyhow::anyhow!(
-                                "@const {}: invalid value {:?}",
-                                name,
-                                num_str
-                            )
+                            anyhow::anyhow!("@const {}: invalid value {:?}", name, num_str)
                         })?;
                         self.constants.insert(name, value);
                     }
@@ -392,10 +373,7 @@ impl Preprocessor {
                             bail!("@use: missing constant name");
                         }
                         let value = self.constants.get(&name).ok_or_else(|| {
-                            OgreError::Other(format!(
-                                "undefined constant: @use {}",
-                                name
-                            ))
+                            OgreError::Other(format!("undefined constant: @use {}", name))
                         })?;
                         for j in 0..*value {
                             top_level.push('+');
@@ -412,20 +390,14 @@ impl Preprocessor {
                     }
 
                     other => {
-                        return Err(
-                            OgreError::UnknownDirective(other.to_string()).into()
-                        );
+                        return Err(OgreError::UnknownDirective(other.to_string()).into());
                     }
                 }
             } else {
                 // Regular character — add to top_level with source tracking
                 if self.build_map {
                     if let Some(ref mut sm) = self.source_map {
-                        sm.push(SourceLocation::new(
-                            current_file.to_path_buf(),
-                            line,
-                            col,
-                        ));
+                        sm.push(SourceLocation::new(current_file.to_path_buf(), line, col));
                     }
                 }
                 top_level.push(chars[i]);
@@ -444,11 +416,7 @@ impl Preprocessor {
     }
 
     /// Expand pass that also builds source map entries for expanded @call bodies.
-    fn expand_with_tracking(
-        &mut self,
-        code: &str,
-        stack: &mut Vec<String>,
-    ) -> Result<String> {
+    fn expand_with_tracking(&mut self, code: &str, stack: &mut Vec<String>) -> Result<String> {
         let mut result = String::new();
         let chars: Vec<char> = code.chars().collect();
         let mut i = 0;
@@ -464,18 +432,16 @@ impl Preprocessor {
         } else {
             None
         };
-        let collect_locations = collect_map
-            .as_ref()
-            .map(|m| {
-                // Extract the locations vec for indexed access
-                let mut locs = Vec::new();
-                let mut idx = 0;
-                while let Some(loc) = m.lookup(idx) {
-                    locs.push(loc.clone());
-                    idx += 1;
-                }
-                locs
-            });
+        let collect_locations = collect_map.as_ref().map(|m| {
+            // Extract the locations vec for indexed access
+            let mut locs = Vec::new();
+            let mut idx = 0;
+            while let Some(loc) = m.lookup(idx) {
+                locs.push(loc.clone());
+                idx += 1;
+            }
+            locs
+        });
 
         if self.build_map {
             self.source_map = Some(SourceMap::new());
@@ -493,9 +459,7 @@ impl Preprocessor {
                     if stack.contains(&name) {
                         let mut cycle = stack.clone();
                         cycle.push(name.clone());
-                        return Err(
-                            OgreError::CycleDetected(cycle.join(" → ")).into()
-                        );
+                        return Err(OgreError::CycleDetected(cycle.join(" → ")).into());
                     }
 
                     let body = self
@@ -543,20 +507,13 @@ impl Preprocessor {
                     skip_spaces(&chars, &mut i);
                     let name = take_identifier(&chars, &mut i);
                     let value = self.constants.get(&name).ok_or_else(|| {
-                        OgreError::Other(format!(
-                            "undefined constant: @use {}",
-                            name
-                        ))
+                        OgreError::Other(format!("undefined constant: @use {}", name))
                     })?;
                     for _ in 0..*value {
                         result.push('+');
                         if self.build_map {
                             if let Some(ref mut sm) = self.source_map {
-                                sm.push(SourceLocation::new(
-                                    PathBuf::from("<const>"),
-                                    1,
-                                    1,
-                                ));
+                                sm.push(SourceLocation::new(PathBuf::from("<const>"), 1, 1));
                             }
                         }
                     }
@@ -634,14 +591,12 @@ impl Preprocessor {
                                 .strip_prefix("std/")
                                 .unwrap()
                                 .strip_suffix(".bf")
-                                .unwrap_or(
-                                    path_str.strip_prefix("std/").unwrap()
-                                );
+                                .unwrap_or(path_str.strip_prefix("std/").unwrap());
 
-                            let stdlib_source = get_stdlib_module(module_name)
-                                .ok_or_else(|| OgreError::UnknownStdModule(
-                                    module_name.to_string()
-                                ))?;
+                            let stdlib_source =
+                                get_stdlib_module(module_name).ok_or_else(|| {
+                                    OgreError::UnknownStdModule(module_name.to_string())
+                                })?;
 
                             let sentinel = PathBuf::from(format!("<stdlib:{}>", module_name));
                             if !self.imported.contains(&sentinel) {
@@ -657,8 +612,9 @@ impl Preprocessor {
 
                             if self.imported.contains(&canonical) {
                                 return Err(OgreError::ImportCycle(
-                                    import_path.display().to_string()
-                                ).into());
+                                    import_path.display().to_string(),
+                                )
+                                .into());
                             }
                             self.imported.insert(canonical);
 
@@ -672,7 +628,8 @@ impl Preprocessor {
                             // Collect @fn definitions; discard top-level code from imports
                             let import_top_level = self.collect(&imported_source, &import_base)?;
                             // Warn if the imported file had top-level BF code that's being dropped
-                            let has_bf_code = import_top_level.chars().any(|c| "+-><.,[]".contains(c));
+                            let has_bf_code =
+                                import_top_level.chars().any(|c| "+-><.,[]".contains(c));
                             if has_bf_code {
                                 eprintln!(
                                     "warning: top-level code in imported file '{}' is discarded",
@@ -743,8 +700,9 @@ impl Preprocessor {
                         if num_str.is_empty() {
                             bail!("@const {}: expected numeric value", name);
                         }
-                        let value: usize = num_str.parse()
-                            .map_err(|_| anyhow::anyhow!("@const {}: invalid value {:?}", name, num_str))?;
+                        let value: usize = num_str.parse().map_err(|_| {
+                            anyhow::anyhow!("@const {}: invalid value {:?}", name, num_str)
+                        })?;
                         self.constants.insert(name, value);
                     }
 
@@ -754,8 +712,9 @@ impl Preprocessor {
                         if name.is_empty() {
                             bail!("@use: missing constant name");
                         }
-                        let value = self.constants.get(&name)
-                            .ok_or_else(|| OgreError::Other(format!("undefined constant: @use {}", name)))?;
+                        let value = self.constants.get(&name).ok_or_else(|| {
+                            OgreError::Other(format!("undefined constant: @use {}", name))
+                        })?;
                         // Expand to N '+' characters
                         for _ in 0..*value {
                             top_level.push('+');
@@ -810,8 +769,9 @@ impl Preprocessor {
                 } else if keyword == "use" {
                     skip_spaces(&chars, &mut i);
                     let name = take_identifier(&chars, &mut i);
-                    let value = self.constants.get(&name)
-                        .ok_or_else(|| OgreError::Other(format!("undefined constant: @use {}", name)))?;
+                    let value = self.constants.get(&name).ok_or_else(|| {
+                        OgreError::Other(format!("undefined constant: @use {}", name))
+                    })?;
                     for _ in 0..*value {
                         result.push('+');
                     }
@@ -969,7 +929,12 @@ mod tests {
     #[test]
     fn test_const_use_basic() {
         let out = process("@const X 5\n@use X").unwrap();
-        assert_eq!(out.replace(|c: char| !c.is_ascii() && c != '+', "").matches('+').count(), 5);
+        assert_eq!(
+            out.replace(|c: char| !c.is_ascii() && c != '+', "")
+                .matches('+')
+                .count(),
+            5
+        );
     }
 
     #[test]
@@ -1111,7 +1076,8 @@ mod tests {
             .write_all(b"@fn myfunc { +++ }")
             .unwrap();
 
-        let src = format!("@import \"std/io\"\n@import \"mylib.bf\"\n@call print_newline\n@call myfunc");
+        let src =
+            format!("@import \"std/io\"\n@import \"mylib.bf\"\n@call print_newline\n@call myfunc");
         let out = Preprocessor::process_source(&src, dir.path()).unwrap();
         assert!(out.contains("+++"));
         assert!(!out.contains("@call"));
@@ -1122,12 +1088,9 @@ mod tests {
     #[test]
     fn test_source_map_plain_bf() {
         let src = "+>.";
-        let (expanded, map) = Preprocessor::process_source_with_map(
-            src,
-            Path::new("."),
-            Path::new("test.bf"),
-        )
-        .unwrap();
+        let (expanded, map) =
+            Preprocessor::process_source_with_map(src, Path::new("."), Path::new("test.bf"))
+                .unwrap();
         assert_eq!(expanded, "+>.");
         assert_eq!(map.len(), 3);
         // Each character should map to test.bf
@@ -1144,12 +1107,9 @@ mod tests {
     #[test]
     fn test_source_map_with_fn_call() {
         let src = "@fn add { +++ }\n@call add";
-        let (expanded, map) = Preprocessor::process_source_with_map(
-            src,
-            Path::new("."),
-            Path::new("main.bf"),
-        )
-        .unwrap();
+        let (expanded, map) =
+            Preprocessor::process_source_with_map(src, Path::new("."), Path::new("main.bf"))
+                .unwrap();
         // The expanded output should contain the +++ from the function body
         assert!(expanded.contains("+++"));
         // The source map entries for the function body should have function="add"
@@ -1168,12 +1128,9 @@ mod tests {
     #[test]
     fn test_source_map_multiline() {
         let src = "+\n+\n+";
-        let (expanded, map) = Preprocessor::process_source_with_map(
-            src,
-            Path::new("."),
-            Path::new("test.bf"),
-        )
-        .unwrap();
+        let (expanded, map) =
+            Preprocessor::process_source_with_map(src, Path::new("."), Path::new("test.bf"))
+                .unwrap();
         assert_eq!(expanded, "+\n+\n+");
         // First + is line 1, col 1
         let loc0 = map.lookup(0).unwrap();
@@ -1194,23 +1151,17 @@ mod tests {
         // Processing with source map should produce the same expanded output
         let src = "@fn inc { + }\n@fn dec { - }\n@call inc @call dec";
         let without_map = Preprocessor::process_source(src, Path::new(".")).unwrap();
-        let (with_map, _) = Preprocessor::process_source_with_map(
-            src,
-            Path::new("."),
-            Path::new("test.bf"),
-        )
-        .unwrap();
+        let (with_map, _) =
+            Preprocessor::process_source_with_map(src, Path::new("."), Path::new("test.bf"))
+                .unwrap();
         assert_eq!(without_map, with_map);
     }
 
     #[test]
     fn test_source_map_empty_produces_empty_map() {
-        let (expanded, map) = Preprocessor::process_source_with_map(
-            "",
-            Path::new("."),
-            Path::new("empty.bf"),
-        )
-        .unwrap();
+        let (expanded, map) =
+            Preprocessor::process_source_with_map("", Path::new("."), Path::new("empty.bf"))
+                .unwrap();
         assert_eq!(expanded, "");
         assert!(map.is_empty());
     }
@@ -1218,12 +1169,9 @@ mod tests {
     #[test]
     fn test_source_map_with_const_use() {
         let src = "@const N 3\n@use N";
-        let (expanded, map) = Preprocessor::process_source_with_map(
-            src,
-            Path::new("."),
-            Path::new("test.bf"),
-        )
-        .unwrap();
+        let (expanded, map) =
+            Preprocessor::process_source_with_map(src, Path::new("."), Path::new("test.bf"))
+                .unwrap();
         // @use N expands to "+++"
         let plus_count = expanded.chars().filter(|c| *c == '+').count();
         assert_eq!(plus_count, 3);

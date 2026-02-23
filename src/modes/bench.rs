@@ -74,7 +74,10 @@ pub fn bench_and_report_ex(path: &Path, tape_size: usize, verbosity: Verbosity) 
 }
 
 fn print_bench_result(result: &BenchResult, tape_size: usize, verbosity: Verbosity) -> Result<()> {
-    println!("  Instructions executed: {}", format_number(result.instruction_count));
+    println!(
+        "  Instructions executed: {}",
+        format_number(result.instruction_count)
+    );
     println!("  Cells touched:         {}", result.cells_touched);
     println!("  Output bytes:          {}", result.output_bytes);
     println!("  Wall time:             {:.3} ms", result.elapsed_ms);

@@ -112,10 +112,7 @@ pub fn build_op_to_char_map(source: &str) -> Vec<usize> {
                 // Check if this character would be collapsed with the previous one
                 let collapsed = matches!(
                     (last_bf_char, ch),
-                    (Some('+'), '+')
-                        | (Some('-'), '-')
-                        | (Some('>'), '>')
-                        | (Some('<'), '<')
+                    (Some('+'), '+') | (Some('-'), '-') | (Some('>'), '>') | (Some('<'), '<')
                 );
 
                 if collapsed {
@@ -168,12 +165,8 @@ mod tests {
 
     #[test]
     fn test_source_location_display_with_function() {
-        let loc = SourceLocation::with_function(
-            PathBuf::from("src/greet.bf"),
-            3,
-            5,
-            "greet".to_string(),
-        );
+        let loc =
+            SourceLocation::with_function(PathBuf::from("src/greet.bf"), 3, 5, "greet".to_string());
         assert_eq!(loc.display_short(), "src/greet.bf:3:5 (@fn greet)");
     }
 

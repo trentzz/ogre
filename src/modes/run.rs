@@ -39,11 +39,7 @@ pub fn run_file_with_deps(
 /// Arguments are joined with spaces, terminated with newline, and fed as
 /// input prefix to the BF program. After those bytes are consumed, further
 /// `,` reads come from real stdin.
-pub fn run_file_with_args(
-    path: &Path,
-    tape_size: usize,
-    program_args: &[String],
-) -> Result<()> {
+pub fn run_file_with_args(path: &Path, tape_size: usize, program_args: &[String]) -> Result<()> {
     let expanded = Preprocessor::process_file(path)?;
     let arg_input = format!("{}\n", program_args.join(" "));
     let mut interp = Interpreter::with_input_and_tape_size(&expanded, &arg_input, tape_size)?;
@@ -76,11 +72,7 @@ pub fn run_file_watch(path: &Path, tape_size: usize) -> Result<()> {
     let canonical = std::fs::canonicalize(path)?;
 
     // Initial run
-    println!(
-        "{} {}",
-        "Watching".green().bold(),
-        path.display()
-    );
+    println!("{} {}", "Watching".green().bold(), path.display());
     run_once(path, tape_size);
 
     // Set up file watcher
@@ -94,15 +86,10 @@ pub fn run_file_watch(path: &Path, tape_size: usize) -> Result<()> {
     })?;
 
     // Watch the file's parent directory (more reliable than watching the file directly)
-    let watch_dir = canonical
-        .parent()
-        .unwrap_or_else(|| Path::new("."));
+    let watch_dir = canonical.parent().unwrap_or_else(|| Path::new("."));
     watcher.watch(watch_dir, RecursiveMode::NonRecursive)?;
 
-    println!(
-        "{}",
-        "Press Ctrl+C to stop watching.".dimmed()
-    );
+    println!("{}", "Press Ctrl+C to stop watching.".dimmed());
 
     // Debounce: wait for events, then re-run
     while let Ok(()) = rx.recv() {

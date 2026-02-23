@@ -124,10 +124,7 @@ pub fn run_tests_from_file_ex(
                     }
                     failures.push((
                         case.name.clone(),
-                        format!(
-                            "timeout: exceeded {} instruction limit",
-                            instruction_limit
-                        ),
+                        format!("timeout: exceeded {} instruction limit", instruction_limit),
                     ));
                     failed += 1;
                 }
@@ -170,10 +167,7 @@ pub fn run_tests_from_file_ex(
                         if let Some(ref regex_str) = case.output_regex {
                             failures.push((
                                 case.name.clone(),
-                                format!(
-                                    "output {:?} does not match regex /{}/",
-                                    actual, regex_str
-                                ),
+                                format!("output {:?} does not match regex /{}/", actual, regex_str),
                             ));
                         } else {
                             failures.push((
@@ -208,17 +202,9 @@ pub fn run_tests_from_file_ex(
 
     if !verbosity.is_quiet() {
         if failed > 0 {
-            println!(
-                "{}/{} tests passed",
-                passed.to_string().red(),
-                total
-            );
+            println!("{}/{} tests passed", passed.to_string().red(), total);
         } else {
-            println!(
-                "{}/{} tests passed",
-                passed.to_string().green(),
-                total
-            );
+            println!("{}/{} tests passed", passed.to_string().green(), total);
         }
     }
 
@@ -249,7 +235,11 @@ pub fn run_project_tests(project: &OgreProject, base: &Path) -> Result<()> {
     run_project_tests_ex(project, base, Verbosity::Normal)
 }
 
-pub fn run_project_tests_ex(project: &OgreProject, base: &Path, verbosity: Verbosity) -> Result<()> {
+pub fn run_project_tests_ex(
+    project: &OgreProject,
+    base: &Path,
+    verbosity: Verbosity,
+) -> Result<()> {
     if project.tests.is_empty() {
         if !verbosity.is_quiet() {
             println!("No tests defined in ogre.toml.");

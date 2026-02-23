@@ -52,7 +52,12 @@ pub fn pack_and_output_with_deps(
     output_packed(&packed, output, verbosity)
 }
 
-pub fn pack_and_output_ex(path: &Path, output: Option<&str>, optimize: bool, verbosity: Verbosity) -> Result<()> {
+pub fn pack_and_output_ex(
+    path: &Path,
+    output: Option<&str>,
+    optimize: bool,
+    verbosity: Verbosity,
+) -> Result<()> {
     let packed = pack_file(path, optimize)?;
     output_packed(&packed, output, verbosity)
 }
@@ -81,10 +86,7 @@ mod tests {
     #[test]
     fn test_pack_strips_comments() {
         let source = "+ this is a comment +";
-        let bf: String = source
-            .chars()
-            .filter(|c| "+-><.,[]".contains(*c))
-            .collect();
+        let bf: String = source.chars().filter(|c| "+-><.,[]".contains(*c)).collect();
         assert_eq!(bf, "++");
     }
 

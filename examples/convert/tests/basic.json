@@ -1,0 +1,52 @@
+[
+  {
+    "name": "upper basic",
+    "brainfuck": "src/main.bf",
+    "input": "--upper hello\n",
+    "output": "HELLO"
+  },
+  {
+    "name": "upper single",
+    "brainfuck": "src/main.bf",
+    "input": "--upper a\n",
+    "output": "A"
+  },
+  {
+    "name": "lower basic",
+    "brainfuck": "src/main.bf",
+    "input": "--lower HELLO\n",
+    "output": "hello"
+  },
+  {
+    "name": "lower single",
+    "brainfuck": "src/main.bf",
+    "input": "--lower A\n",
+    "output": "a"
+  },
+  {
+    "name": "ascii-to-decimal single char",
+    "brainfuck": "src/main.bf",
+    "input": "--ascii-to-decimal A\n",
+    "output": "",
+    "output_regex": "65"
+  },
+  {
+    "name": "ascii-to-decimal multi char",
+    "brainfuck": "src/main.bf",
+    "input": "--ascii-to-decimal Hi\n",
+    "output": "",
+    "output_regex": "72 105"
+  },
+  {
+    "name": "decimal-to-ascii single",
+    "brainfuck": "src/main.bf",
+    "input": "--decimal-to-ascii 65\n",
+    "output": "A"
+  },
+  {
+    "name": "decimal-to-ascii multi",
+    "brainfuck": "src/main.bf",
+    "input": "--decimal-to-ascii 72 105\n",
+    "output": "Hi"
+  }
+]

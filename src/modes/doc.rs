@@ -119,7 +119,10 @@ mod tests {
     fn test_generate_docs_empty_file() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("empty.bf");
-        std::fs::File::create(&file).unwrap().write_all(b"+++").unwrap();
+        std::fs::File::create(&file)
+            .unwrap()
+            .write_all(b"+++")
+            .unwrap();
 
         let docs = generate_docs(&file).unwrap();
         assert!(docs.contains("empty.bf"));

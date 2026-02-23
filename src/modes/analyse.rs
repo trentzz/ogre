@@ -156,7 +156,9 @@ fn count_clear_idioms(code: &str) -> usize {
     let mut count = 0;
     let bytes = code.as_bytes();
     for i in 0..bytes.len().saturating_sub(2) {
-        if bytes[i] == b'[' && (bytes[i + 1] == b'-' || bytes[i + 1] == b'+') && bytes[i + 2] == b']'
+        if bytes[i] == b'['
+            && (bytes[i + 1] == b'-' || bytes[i + 1] == b'+')
+            && bytes[i + 2] == b']'
         {
             count += 1;
         }
@@ -259,7 +261,10 @@ pub fn analyse_file(path: &Path, verbose: bool, in_place: bool) -> Result<()> {
 
         output_lines.push(String::new());
         output_lines.push("=== COMPLEXITY METRICS ===".to_string());
-        output_lines.push(format!("  Max loop nesting depth: {}", report.max_loop_depth));
+        output_lines.push(format!(
+            "  Max loop nesting depth: {}",
+            report.max_loop_depth
+        ));
         output_lines.push(format!("  Total BF instructions: {}", report.total_ops));
         output_lines.push(format!("  Optimized IR ops: {}", report.optimized_ops));
         if report.total_ops > 0 {

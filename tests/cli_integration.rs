@@ -44,10 +44,7 @@ fn test_run_hello_world() {
 
 #[test]
 fn test_run_nonexistent_file() {
-    ogre()
-        .args(["run", "nonexistent.bf"])
-        .assert()
-        .failure();
+    ogre().args(["run", "nonexistent.bf"]).assert().failure();
 }
 
 #[test]
@@ -117,11 +114,7 @@ fn test_format_check_unformatted() {
 #[test]
 fn test_format_diff_no_changes() {
     ogre()
-        .args([
-            "format",
-            "--diff",
-            "tests/brainfuck_scripts/hello_world.bf",
-        ])
+        .args(["format", "--diff", "tests/brainfuck_scripts/hello_world.bf"])
         .assert()
         .success()
         .stdout(predicate::str::is_empty());
@@ -168,8 +161,14 @@ fn test_format_in_place() {
         .success();
 
     let formatted = fs::read_to_string(&file).unwrap();
-    assert!(formatted.contains("["), "formatted output should have brackets");
-    assert_ne!(formatted, "+++[>+++<-]>.", "file should have been reformatted");
+    assert!(
+        formatted.contains("["),
+        "formatted output should have brackets"
+    );
+    assert_ne!(
+        formatted, "+++[>+++<-]>.",
+        "file should have been reformatted"
+    );
 }
 
 // ---- ogre generate ----
@@ -349,7 +348,11 @@ fn test_init_creates_toml() {
 #[test]
 fn test_init_fails_if_toml_exists() {
     let dir = TempDir::new().unwrap();
-    fs::write(dir.path().join("ogre.toml"), "[project]\nname = \"x\"\nversion = \"0.1.0\"\nentry = \"src/main.bf\"").unwrap();
+    fs::write(
+        dir.path().join("ogre.toml"),
+        "[project]\nname = \"x\"\nversion = \"0.1.0\"\nentry = \"src/main.bf\"",
+    )
+    .unwrap();
 
     ogre()
         .arg("init")
@@ -415,8 +418,9 @@ fn test_doc_file() {
     let dir = TempDir::new().unwrap();
     fs::write(
         dir.path().join("test.bf"),
-        "@doc My function docs\n@fn my_func { +++ }"
-    ).unwrap();
+        "@doc My function docs\n@fn my_func { +++ }",
+    )
+    .unwrap();
 
     ogre()
         .args(["doc", "test.bf"])
@@ -467,8 +471,9 @@ fn test_const_use_in_run() {
     // @const X 65 -> @use X expands to 65 '+' chars -> ASCII 'A'
     fs::write(
         dir.path().join("const_test.bf"),
-        "@const CHAR_A 65\n@use CHAR_A\n."
-    ).unwrap();
+        "@const CHAR_A 65\n@use CHAR_A\n.",
+    )
+    .unwrap();
 
     ogre()
         .args(["run", "const_test.bf"])
@@ -569,7 +574,10 @@ fn test_pack_optimize_produces_shorter() {
 
     let normal_len = String::from_utf8_lossy(&normal.stdout).len();
     let opt_len = String::from_utf8_lossy(&optimized.stdout).len();
-    assert!(opt_len <= normal_len, "optimized should be <= normal length");
+    assert!(
+        opt_len <= normal_len,
+        "optimized should be <= normal length"
+    );
 }
 
 // ---- ogre init additional tests ----
@@ -608,7 +616,11 @@ fn test_bench_hello_world() {
 #[test]
 fn test_analyse_verbose() {
     ogre()
-        .args(["analyse", "--verbose", "tests/brainfuck_scripts/hello_world.bf"])
+        .args([
+            "analyse",
+            "--verbose",
+            "tests/brainfuck_scripts/hello_world.bf",
+        ])
         .assert()
         .success()
         .stdout(predicate::str::contains("Brackets"));
@@ -632,7 +644,11 @@ fn test_analyse_unmatched_bracket() {
 #[test]
 fn test_test_runner_passes() {
     let dir = TempDir::new().unwrap();
-    fs::write(dir.path().join("hello.bf"), "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++.[-]").unwrap();
+    fs::write(
+        dir.path().join("hello.bf"),
+        "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++.[-]",
+    )
+    .unwrap();
     let test_json = r#"[{"name":"prints H","brainfuck":"hello.bf","input":"","output":"H"}]"#;
     fs::write(dir.path().join("tests.json"), test_json).unwrap();
 
@@ -646,7 +662,11 @@ fn test_test_runner_passes() {
 #[test]
 fn test_test_runner_fails() {
     let dir = TempDir::new().unwrap();
-    fs::write(dir.path().join("hello.bf"), "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++.[-]").unwrap();
+    fs::write(
+        dir.path().join("hello.bf"),
+        "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++.[-]",
+    )
+    .unwrap();
     let test_json = r#"[{"name":"wrong output","brainfuck":"hello.bf","input":"","output":"X"}]"#;
     fs::write(dir.path().join("tests.json"), test_json).unwrap();
 
@@ -676,8 +696,9 @@ fn test_run_with_fn_call() {
     let dir = TempDir::new().unwrap();
     fs::write(
         dir.path().join("fn_test.bf"),
-        "@fn add3 { +++ }\n@call add3\n."
-    ).unwrap();
+        "@fn add3 { +++ }\n@call add3\n.",
+    )
+    .unwrap();
 
     ogre()
         .args(["run", "fn_test.bf"])
@@ -693,8 +714,9 @@ fn test_run_with_stdlib_import() {
     let dir = TempDir::new().unwrap();
     fs::write(
         dir.path().join("std_test.bf"),
-        "@import \"std/io\"\n@call print_newline"
-    ).unwrap();
+        "@import \"std/io\"\n@call print_newline",
+    )
+    .unwrap();
 
     ogre()
         .args(["run", "std_test.bf"])
@@ -708,10 +730,7 @@ fn test_run_with_stdlib_import() {
 
 #[test]
 fn test_no_color_flag_accepted() {
-    ogre()
-        .args(["--no-color", "--help"])
-        .assert()
-        .success();
+    ogre().args(["--no-color", "--help"]).assert().success();
 }
 
 // ---- Error cases ----
@@ -726,10 +745,7 @@ fn test_no_subcommand_shows_help() {
 
 #[test]
 fn test_unknown_subcommand() {
-    ogre()
-        .arg("nonexistent")
-        .assert()
-        .failure();
+    ogre().arg("nonexistent").assert().failure();
 }
 
 // ---- WASM target ----
@@ -741,7 +757,14 @@ fn test_compile_wasm_generates_wat() {
     fs::write(&file, "++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>.").unwrap();
 
     ogre()
-        .args(["compile", file.to_str().unwrap(), "--target", "wasm", "-o", "hello"])
+        .args([
+            "compile",
+            file.to_str().unwrap(),
+            "--target",
+            "wasm",
+            "-o",
+            "hello",
+        ])
         .current_dir(dir.path())
         .assert()
         .success();
@@ -865,11 +888,7 @@ mylib = { path = "../mylib" }
     // This file calls a function from the dependency
     fs::write(app_src.join("main.bf"), "@call dep_fn").unwrap();
 
-    ogre()
-        .arg("check")
-        .current_dir(&app_dir)
-        .assert()
-        .success();
+    ogre().arg("check").current_dir(&app_dir).assert().success();
 }
 
 #[test]

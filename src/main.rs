@@ -45,10 +45,14 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Interpret and execute a brainfuck file (or project entry if omitted)
-    #[command(after_help = "Examples:\n  ogre run hello.bf\n  ogre run --tape-size 60000 big.bf\n  ogre run --watch hello.bf")]
+    #[command(
+        after_help = "Examples:\n  ogre run hello.bf\n  ogre run --tape-size 60000 big.bf\n  ogre run --watch hello.bf"
+    )]
     Run(RunArgs),
     /// Compile brainfuck to a native binary via C (or to WASM)
-    #[command(after_help = "Examples:\n  ogre compile hello.bf -o hello\n  ogre compile hello.bf --keep\n  ogre compile hello.bf --target wasm")]
+    #[command(
+        after_help = "Examples:\n  ogre compile hello.bf -o hello\n  ogre compile hello.bf --keep\n  ogre compile hello.bf --target wasm"
+    )]
     Compile(CompileArgs),
     /// Build the current project (requires ogre.toml)
     #[command(after_help = "Examples:\n  ogre build\n  ogre build -o myapp\n  ogre build --keep")]
@@ -57,43 +61,67 @@ enum Commands {
     #[command(after_help = "Examples:\n  ogre start\n  ogre start --tape-size 60000")]
     Start(StartArgs),
     /// GDB-style interactive debugger
-    #[command(after_help = "Examples:\n  ogre debug hello.bf\n  ogre debug --tape-size 60000 big.bf")]
+    #[command(
+        after_help = "Examples:\n  ogre debug hello.bf\n  ogre debug --tape-size 60000 big.bf"
+    )]
     Debug(DebugArgs),
     /// Format a brainfuck file in-place (or all project files if omitted)
-    #[command(after_help = "Examples:\n  ogre format hello.bf\n  ogre format --check hello.bf\n  ogre format --diff hello.bf\n  ogre format --indent 2 --grouping 10")]
+    #[command(
+        after_help = "Examples:\n  ogre format hello.bf\n  ogre format --check hello.bf\n  ogre format --diff hello.bf\n  ogre format --indent 2 --grouping 10"
+    )]
     Format(FormatArgs),
     /// Static analysis of a brainfuck script (or all project files if omitted)
-    #[command(after_help = "Examples:\n  ogre analyse hello.bf\n  ogre analyse --verbose hello.bf\n  ogre analyse --in-place hello.bf")]
+    #[command(
+        after_help = "Examples:\n  ogre analyse hello.bf\n  ogre analyse --verbose hello.bf\n  ogre analyse --in-place hello.bf"
+    )]
     Analyse(AnalyseArgs),
     /// Run structured tests from a JSON file (or all project test suites if omitted)
-    #[command(after_help = "Examples:\n  ogre test tests/basic.json\n  ogre test  # runs all project test suites")]
+    #[command(
+        after_help = "Examples:\n  ogre test tests/basic.json\n  ogre test  # runs all project test suites"
+    )]
     Test(TestArgs),
     /// Scaffold a new brainfuck project directory
     #[command(after_help = "Examples:\n  ogre new myproject\n  ogre new myproject --with-std")]
     New(NewArgs),
     /// Generate brainfuck code for common patterns
-    #[command(subcommand, after_help = "Examples:\n  ogre generate helloworld\n  ogre generate string \"Hello!\" -o hello.bf\n  ogre generate loop 10")]
+    #[command(
+        subcommand,
+        after_help = "Examples:\n  ogre generate helloworld\n  ogre generate string \"Hello!\" -o hello.bf\n  ogre generate loop 10"
+    )]
     Generate(GenerateCommands),
     /// Browse the built-in standard library
-    #[command(subcommand, after_help = "Examples:\n  ogre stdlib list\n  ogre stdlib show io\n  ogre stdlib show math")]
+    #[command(
+        subcommand,
+        after_help = "Examples:\n  ogre stdlib list\n  ogre stdlib show io\n  ogre stdlib show math"
+    )]
     Stdlib(StdlibCommands),
     /// Validate brackets, imports, and calls (exit 0 if OK, 1 if errors)
-    #[command(after_help = "Examples:\n  ogre check hello.bf\n  ogre check  # checks all project files")]
+    #[command(
+        after_help = "Examples:\n  ogre check hello.bf\n  ogre check  # checks all project files"
+    )]
     Check(CheckArgs),
     /// Output fully preprocessed and expanded brainfuck
-    #[command(after_help = "Examples:\n  ogre pack hello.bf\n  ogre pack hello.bf --optimize -o packed.bf")]
+    #[command(
+        after_help = "Examples:\n  ogre pack hello.bf\n  ogre pack hello.bf --optimize -o packed.bf"
+    )]
     Pack(PackArgs),
     /// Initialize ogre.toml in the current directory
     #[command(after_help = "Example:\n  cd myproject && ogre init")]
     Init,
     /// Benchmark a brainfuck program (instruction count, wall time, cells touched)
-    #[command(after_help = "Examples:\n  ogre bench hello.bf\n  ogre bench --tape-size 60000 big.bf")]
+    #[command(
+        after_help = "Examples:\n  ogre bench hello.bf\n  ogre bench --tape-size 60000 big.bf"
+    )]
     Bench(BenchArgs),
     /// Generate documentation from @doc comments and @fn definitions
-    #[command(after_help = "Examples:\n  ogre doc hello.bf\n  ogre doc --stdlib\n  ogre doc hello.bf -o docs.md")]
+    #[command(
+        after_help = "Examples:\n  ogre doc hello.bf\n  ogre doc --stdlib\n  ogre doc hello.bf -o docs.md"
+    )]
     Doc(DocArgs),
     /// Trace execution of a brainfuck program (print tape state per instruction)
-    #[command(after_help = "Examples:\n  ogre trace hello.bf\n  ogre trace --every 100 hello.bf\n  ogre trace --tape-size 1000 hello.bf")]
+    #[command(
+        after_help = "Examples:\n  ogre trace hello.bf\n  ogre trace --every 100 hello.bf\n  ogre trace --tape-size 1000 hello.bf"
+    )]
     Trace(TraceArgs),
 }
 
@@ -318,11 +346,7 @@ fn main() {
     }
 
     if let Err(e) = run(cli) {
-        eprintln!(
-            "{} {}",
-            colored::Colorize::red("error:"),
-            e
-        );
+        eprintln!("{} {}", colored::Colorize::red("error:"), e);
         process::exit(1);
     }
 }
@@ -340,43 +364,52 @@ fn run(cli: Cli) -> Result<()> {
         Commands::Run(args) => {
             let tape_size = args.tape_size.unwrap_or(30_000);
             let has_args = !args.program_args.is_empty();
-            let file = match args.file {
-                Some(f) => std::path::PathBuf::from(f),
+            match args.file {
+                Some(f) => {
+                    let path = std::path::PathBuf::from(&f);
+                    if path.is_dir() {
+                        let toml_path = path.join("ogre.toml");
+                        if !toml_path.exists() {
+                            bail!("directory {:?} does not contain an ogre.toml", f);
+                        }
+                        let base = std::fs::canonicalize(&path)?;
+                        let proj = OgreProject::load(&toml_path)?;
+                        run_project(
+                            &proj,
+                            &base,
+                            tape_size,
+                            args.watch,
+                            has_args,
+                            &args.program_args,
+                        )?;
+                    } else if args.watch {
+                        run::run_file_watch(&path, tape_size)?;
+                    } else if has_args {
+                        run::run_file_with_args(&path, tape_size, &args.program_args)?;
+                    } else {
+                        run::run_file_with_tape_size(&path, tape_size)?;
+                    }
+                }
                 None => {
                     let (proj, base) = require_project()?;
-                    let ts = proj
-                        .build
-                        .as_ref()
-                        .and_then(|b| b.tape_size)
-                        .unwrap_or(tape_size);
-                    let dep_fns = proj.collect_dependency_functions(&base)?;
-                    let entry = proj.entry_path(&base);
-                    if args.watch {
-                        run::run_file_watch(&entry, ts)?;
-                    } else if has_args && !dep_fns.is_empty() {
-                        run::run_file_with_args_and_deps(&entry, ts, &args.program_args, &dep_fns)?;
-                    } else if has_args {
-                        run::run_file_with_args(&entry, ts, &args.program_args)?;
-                    } else if dep_fns.is_empty() {
-                        run::run_file_with_tape_size(&entry, ts)?;
-                    } else {
-                        run::run_file_with_deps(&entry, ts, &dep_fns)?;
-                    }
-                    return Ok(());
+                    run_project(
+                        &proj,
+                        &base,
+                        tape_size,
+                        args.watch,
+                        has_args,
+                        &args.program_args,
+                    )?;
                 }
-            };
-            if args.watch {
-                run::run_file_watch(&file, tape_size)?;
-            } else if has_args {
-                run::run_file_with_args(&file, tape_size, &args.program_args)?;
-            } else {
-                run::run_file_with_tape_size(&file, tape_size)?;
             }
         }
 
         Commands::Compile(args) => {
             let (file, dep_fns) = match args.file {
-                Some(f) => (std::path::PathBuf::from(f), std::collections::HashMap::new()),
+                Some(f) => (
+                    std::path::PathBuf::from(f),
+                    std::collections::HashMap::new(),
+                ),
                 None => {
                     let (proj, base) = require_project()?;
                     let deps = proj.collect_dependency_functions(&base)?;
@@ -394,12 +427,7 @@ fn run(cli: Cli) -> Result<()> {
                 }
                 "native" | "" => {
                     if dep_fns.is_empty() {
-                        compile::compile_ex(
-                            &file,
-                            args.output.as_deref(),
-                            args.keep,
-                            verbosity,
-                        )?;
+                        compile::compile_ex(&file, args.output.as_deref(), args.keep, verbosity)?;
                     } else {
                         compile::compile_with_deps_ex(
                             &file,
@@ -429,7 +457,14 @@ fn run(cli: Cli) -> Result<()> {
             if dep_fns.is_empty() {
                 compile::compile_ex(&entry, Some(&out_name), args.keep, verbosity)?;
             } else {
-                compile::compile_with_deps_ex(&entry, Some(&out_name), args.keep, 30_000, verbosity, &dep_fns)?;
+                compile::compile_with_deps_ex(
+                    &entry,
+                    Some(&out_name),
+                    args.keep,
+                    30_000,
+                    verbosity,
+                    &dep_fns,
+                )?;
             }
             if !verbosity.is_quiet() {
                 let desc = proj
@@ -597,7 +632,12 @@ fn run(cli: Cli) -> Result<()> {
                                 }
                             } else {
                                 for err in &result.errors {
-                                    println!("{}: {} {}", f.display(), colored::Colorize::red("ERROR"), err);
+                                    println!(
+                                        "{}: {} {}",
+                                        f.display(),
+                                        colored::Colorize::red("ERROR"),
+                                        err
+                                    );
                                 }
                                 all_ok = false;
                             }
@@ -612,7 +652,10 @@ fn run(cli: Cli) -> Result<()> {
 
         Commands::Pack(args) => {
             let (file, dep_fns) = match args.file {
-                Some(f) => (std::path::PathBuf::from(f), std::collections::HashMap::new()),
+                Some(f) => (
+                    std::path::PathBuf::from(f),
+                    std::collections::HashMap::new(),
+                ),
                 None => {
                     let (proj, base) = require_project()?;
                     let deps = proj.collect_dependency_functions(&base)?;
@@ -622,7 +665,13 @@ fn run(cli: Cli) -> Result<()> {
             if dep_fns.is_empty() {
                 pack::pack_and_output_ex(&file, args.output.as_deref(), args.optimize, verbosity)?;
             } else {
-                pack::pack_and_output_with_deps(&file, args.output.as_deref(), args.optimize, verbosity, &dep_fns)?;
+                pack::pack_and_output_with_deps(
+                    &file,
+                    args.output.as_deref(),
+                    args.optimize,
+                    verbosity,
+                    &dep_fns,
+                )?;
             }
         }
 
@@ -633,7 +682,10 @@ fn run(cli: Cli) -> Result<()> {
         Commands::Bench(args) => {
             let tape_size = args.tape_size.unwrap_or(30_000);
             let (file, dep_fns) = match args.file {
-                Some(f) => (std::path::PathBuf::from(f), std::collections::HashMap::new()),
+                Some(f) => (
+                    std::path::PathBuf::from(f),
+                    std::collections::HashMap::new(),
+                ),
                 None => {
                     let (proj, base) = require_project()?;
                     let deps = proj.collect_dependency_functions(&base)?;
@@ -656,11 +708,7 @@ fn run(cli: Cli) -> Result<()> {
                 }
                 None => None,
             };
-            doc::doc_and_output(
-                path.as_deref(),
-                args.stdlib,
-                args.output.as_deref(),
-            )?;
+            doc::doc_and_output(path.as_deref(), args.stdlib, args.output.as_deref())?;
         }
 
         Commands::Trace(args) => {
@@ -712,4 +760,34 @@ fn require_project() -> Result<(OgreProject, std::path::PathBuf)> {
              or supply a file argument."
         ),
     }
+}
+
+/// Run a project using its ogre.toml configuration.
+fn run_project(
+    proj: &OgreProject,
+    base: &std::path::Path,
+    default_tape_size: usize,
+    watch: bool,
+    has_args: bool,
+    program_args: &[String],
+) -> Result<()> {
+    let ts = proj
+        .build
+        .as_ref()
+        .and_then(|b| b.tape_size)
+        .unwrap_or(default_tape_size);
+    let dep_fns = proj.collect_dependency_functions(base)?;
+    let entry = proj.entry_path(base);
+    if watch {
+        run::run_file_watch(&entry, ts)?;
+    } else if has_args && !dep_fns.is_empty() {
+        run::run_file_with_args_and_deps(&entry, ts, program_args, &dep_fns)?;
+    } else if has_args {
+        run::run_file_with_args(&entry, ts, program_args)?;
+    } else if dep_fns.is_empty() {
+        run::run_file_with_tape_size(&entry, ts)?;
+    } else {
+        run::run_file_with_deps(&entry, ts, &dep_fns)?;
+    }
+    Ok(())
 }

@@ -232,10 +232,8 @@ impl Program {
                     if self.ops[i + 3] == Op::Add(1) {
                         if let Op::Right(m) = self.ops[i + 4] {
                             if n == m {
-                                self.ops.splice(
-                                    i..i + 6,
-                                    std::iter::once(Op::MoveAdd(-(n as isize))),
-                                );
+                                self.ops
+                                    .splice(i..i + 6, std::iter::once(Op::MoveAdd(-(n as isize))));
                                 continue;
                             }
                         }
@@ -244,10 +242,8 @@ impl Program {
                     if self.ops[i + 3] == Op::Sub(1) {
                         if let Op::Right(m) = self.ops[i + 4] {
                             if n == m {
-                                self.ops.splice(
-                                    i..i + 6,
-                                    std::iter::once(Op::MoveSub(-(n as isize))),
-                                );
+                                self.ops
+                                    .splice(i..i + 6, std::iter::once(Op::MoveSub(-(n as isize))));
                                 continue;
                             }
                         }
@@ -438,8 +434,8 @@ mod tests {
         assert_eq!(
             prog.ops,
             vec![
-                Op::JumpIfZero(4),    // outer [ -> outer ]
-                Op::JumpIfZero(3),    // inner [ -> inner ]
+                Op::JumpIfZero(4), // outer [ -> outer ]
+                Op::JumpIfZero(3), // inner [ -> inner ]
                 Op::Add(1),
                 Op::JumpIfNonZero(1), // inner ] -> inner [
                 Op::JumpIfNonZero(0), // outer ] -> outer [

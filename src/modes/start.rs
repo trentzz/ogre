@@ -97,7 +97,10 @@ impl StartRepl {
 
     fn print_help() {
         println!("{}", "ogre REPL commands:".bold());
-        println!("  {}      — Reset the tape and interpreter", ":reset".cyan());
+        println!(
+            "  {}      — Reset the tape and interpreter",
+            ":reset".cyan()
+        );
         println!(
             "  {} — Load and run a brainfuck file",
             ":load <file>".cyan()
@@ -106,28 +109,17 @@ impl StartRepl {
             "  {} — Save tape state info to a file",
             ":save <file>".cyan()
         );
-        println!(
-            "  {}  — Show loaded @fn definitions",
-            ":functions".cyan()
-        );
-        println!(
-            "  {}       — Show memory around pointer",
-            ":peek".cyan()
-        );
+        println!("  {}  — Show loaded @fn definitions", ":functions".cyan());
+        println!("  {}       — Show memory around pointer", ":peek".cyan());
         println!(
             "  {} — Show tape cells from start to end",
             ":dump [n]".cyan()
         );
         println!("  {}       — Show this help message", ":help".cyan());
-        println!(
-            "  {}       — Quit the REPL",
-            ":quit / :exit".cyan()
-        );
+        println!("  {}       — Quit the REPL", ":quit / :exit".cyan());
         println!();
         println!("  Type any brainfuck code to execute it.");
-        println!(
-            "  @call, @fn, @const, @use, and @import directives are supported."
-        );
+        println!("  @call, @fn, @const, @use, and @import directives are supported.");
     }
 
     /// Preprocess REPL input, expanding @call/@use directives against loaded functions.
@@ -145,18 +137,14 @@ impl StartRepl {
             .edit_mode(EditMode::Emacs)
             .build();
 
-        let mut rl: Editor<(), rustyline::history::FileHistory> =
-            Editor::with_config(config)?;
+        let mut rl: Editor<(), rustyline::history::FileHistory> = Editor::with_config(config)?;
 
         // Load history
         if let Some(ref hist) = history_path() {
             let _ = rl.load_history(hist);
         }
 
-        println!(
-            "{}",
-            "ogre interactive interpreter".bold()
-        );
+        println!("{}", "ogre interactive interpreter".bold());
         if !self.functions.is_empty() {
             println!(
                 "  {} @fn definition(s) loaded",
@@ -185,8 +173,7 @@ impl StartRepl {
                             break;
                         }
                         ":reset" | "reset" => {
-                            self.interp =
-                                Interpreter::with_tape_size("", self.tape_size)?;
+                            self.interp = Interpreter::with_tape_size("", self.tape_size)?;
                             println!("Tape reset.");
                             continue;
                         }
@@ -198,30 +185,17 @@ impl StartRepl {
                             if self.functions.is_empty() {
                                 println!("No functions loaded.");
                             } else {
-                                let mut names: Vec<&String> =
-                                    self.functions.keys().collect();
+                                let mut names: Vec<&String> = self.functions.keys().collect();
                                 names.sort();
-                                println!(
-                                    "{} function(s) available:",
-                                    names.len()
-                                );
+                                println!("{} function(s) available:", names.len());
                                 for name in names {
                                     let body = &self.functions[name];
-                                    let preview: String =
-                                        body.chars().take(40).collect();
+                                    let preview: String = body.chars().take(40).collect();
                                     let preview = preview.trim().replace('\n', " ");
                                     if body.len() > 40 {
-                                        println!(
-                                            "  {} — {}...",
-                                            name.green(),
-                                            preview
-                                        );
+                                        println!("  {} — {}...", name.green(), preview);
                                     } else {
-                                        println!(
-                                            "  {} — {}",
-                                            name.green(),
-                                            preview
-                                        );
+                                        println!("  {} — {}", name.green(), preview);
                                     }
                                 }
                             }
@@ -241,12 +215,7 @@ impl StartRepl {
                             let dp = self.interp.data_pointer();
                             for (i, &cell) in tape.iter().enumerate().take(len) {
                                 if i == dp {
-                                    print!(
-                                        " {}",
-                                        format!("[{}]", cell)
-                                            .cyan()
-                                            .bold()
-                                    );
+                                    print!(" {}", format!("[{}]", cell).cyan().bold());
                                 } else if cell != 0 {
                                     print!(" {}", cell);
                                 } else {
@@ -259,52 +228,33 @@ impl StartRepl {
                         s if s.starts_with(":load ") => {
                             let file_path = s.strip_prefix(":load ").unwrap().trim();
                             if file_path.is_empty() {
-                                println!(
-                                    "{} usage: :load <file>",
-                                    "Error:".red()
-                                );
+                                println!("{} usage: :load <file>", "Error:".red());
                                 continue;
                             }
                             let path = Path::new(file_path);
                             if !path.exists() {
-                                println!(
-                                    "{} file not found: {}",
-                                    "Error:".red(),
-                                    file_path
-                                );
+                                println!("{} file not found: {}", "Error:".red(), file_path);
                                 continue;
                             }
                             match Preprocessor::process_file(path) {
                                 Ok(expanded) => {
                                     // Also load any function definitions
-                                    if let Ok(fns) =
-                                        Preprocessor::collect_functions_from_file(path)
+                                    if let Ok(fns) = Preprocessor::collect_functions_from_file(path)
                                     {
                                         let fn_count = fns.len();
                                         self.functions.extend(fns);
                                         if fn_count > 0 {
-                                            println!(
-                                                "Loaded {} function(s).",
-                                                fn_count
-                                            );
+                                            println!("Loaded {} function(s).", fn_count);
                                         }
                                     }
                                     // Run the expanded code
                                     match self.interp.feed(&expanded) {
                                         Err(e) => {
-                                            println!(
-                                                "{} {}",
-                                                "Parse error:".red(),
-                                                e
-                                            );
+                                            println!("{} {}", "Parse error:".red(), e);
                                             continue;
                                         }
                                         Ok(()) => match self.interp.run() {
-                                            Err(e) => println!(
-                                                "{} {}",
-                                                "Runtime error:".red(),
-                                                e
-                                            ),
+                                            Err(e) => println!("{} {}", "Runtime error:".red(), e),
                                             Ok(()) => {
                                                 if !self.interp.output().is_empty() {
                                                     print!(
@@ -316,22 +266,14 @@ impl StartRepl {
                                                     io::stdout().flush()?;
                                                     self.interp.clear_output();
                                                 }
-                                                println!(
-                                                    "{}",
-                                                    "Loaded and executed."
-                                                        .green()
-                                                );
+                                                println!("{}", "Loaded and executed.".green());
                                             }
                                         },
                                     }
                                     self.print_memory();
                                 }
                                 Err(e) => {
-                                    println!(
-                                        "{} {}",
-                                        "Preprocess error:".red(),
-                                        e
-                                    );
+                                    println!("{} {}", "Preprocess error:".red(), e);
                                 }
                             }
                             continue;
@@ -339,10 +281,7 @@ impl StartRepl {
                         s if s.starts_with(":save ") => {
                             let file_path = s.strip_prefix(":save ").unwrap().trim();
                             if file_path.is_empty() {
-                                println!(
-                                    "{} usage: :save <file>",
-                                    "Error:".red()
-                                );
+                                println!("{} usage: :save <file>", "Error:".red());
                                 continue;
                             }
                             let dp = self.interp.data_pointer();
@@ -355,34 +294,17 @@ impl StartRepl {
                                 .unwrap_or(0);
                             let mut info = String::new();
                             info.push_str("# ogre REPL tape state\n");
-                            info.push_str(&format!(
-                                "data_pointer: {}\n",
-                                dp
-                            ));
-                            info.push_str(&format!(
-                                "tape_size: {}\n",
-                                tape.len()
-                            ));
-                            info.push_str(&format!(
-                                "cells_used: {}\n",
-                                last_nonzero
-                            ));
+                            info.push_str(&format!("data_pointer: {}\n", dp));
+                            info.push_str(&format!("tape_size: {}\n", tape.len()));
+                            info.push_str(&format!("cells_used: {}\n", last_nonzero));
                             info.push_str("tape: [");
                             let slice = &tape[..last_nonzero.max(dp + 1).min(tape.len())];
-                            let vals: Vec<String> =
-                                slice.iter().map(|v| v.to_string()).collect();
+                            let vals: Vec<String> = slice.iter().map(|v| v.to_string()).collect();
                             info.push_str(&vals.join(", "));
                             info.push_str("]\n");
                             match std::fs::write(file_path, &info) {
-                                Ok(()) => println!(
-                                    "Tape state saved to: {}",
-                                    file_path
-                                ),
-                                Err(e) => println!(
-                                    "{} {}",
-                                    "Error:".red(),
-                                    e
-                                ),
+                                Ok(()) => println!("Tape state saved to: {}", file_path),
+                                Err(e) => println!("{} {}", "Error:".red(), e),
                             }
                             continue;
                         }
@@ -399,37 +321,23 @@ impl StartRepl {
                             let expanded = match self.preprocess_input(code) {
                                 Ok(e) => e,
                                 Err(e) => {
-                                    println!(
-                                        "{} {}",
-                                        "Preprocess error:".red(),
-                                        e
-                                    );
+                                    println!("{} {}", "Preprocess error:".red(), e);
                                     continue;
                                 }
                             };
 
                             match self.interp.feed(&expanded) {
                                 Err(e) => {
-                                    println!(
-                                        "{} {}",
-                                        "Parse error:".red(),
-                                        e
-                                    );
+                                    println!("{} {}", "Parse error:".red(), e);
                                     continue;
                                 }
                                 Ok(()) => match self.interp.run() {
-                                    Err(e) => println!(
-                                        "{} {}",
-                                        "Runtime error:".red(),
-                                        e
-                                    ),
+                                    Err(e) => println!("{} {}", "Runtime error:".red(), e),
                                     Ok(()) => {
                                         if !self.interp.output().is_empty() {
                                             print!(
                                                 "{}",
-                                                String::from_utf8_lossy(
-                                                    self.interp.output()
-                                                )
+                                                String::from_utf8_lossy(self.interp.output())
                                             );
                                             io::stdout().flush()?;
                                             self.interp.clear_output();

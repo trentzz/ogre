@@ -66,24 +66,32 @@ impl OgreProject {
     /// Validate the project configuration after parsing.
     pub fn validate(&self) -> Result<()> {
         if self.project.name.trim().is_empty() {
-            return Err(OgreError::InvalidProject("project.name must not be empty".to_string()).into());
+            return Err(
+                OgreError::InvalidProject("project.name must not be empty".to_string()).into(),
+            );
         }
 
         if !self.project.entry.ends_with(".bf") {
-            return Err(OgreError::InvalidProject(
-                format!("project.entry must end with .bf, got {:?}", self.project.entry)
-            ).into());
+            return Err(OgreError::InvalidProject(format!(
+                "project.entry must end with .bf, got {:?}",
+                self.project.entry
+            ))
+            .into());
         }
 
         if self.project.version.trim().is_empty() {
-            return Err(OgreError::InvalidProject("project.version must not be empty".to_string()).into());
+            return Err(
+                OgreError::InvalidProject("project.version must not be empty".to_string()).into(),
+            );
         }
 
         for (i, test_ref) in self.tests.iter().enumerate() {
             if !test_ref.file.ends_with(".json") {
-                return Err(OgreError::InvalidProject(
-                    format!("tests[{}].file must end with .json, got {:?}", i, test_ref.file)
-                ).into());
+                return Err(OgreError::InvalidProject(format!(
+                    "tests[{}].file must end with .json, got {:?}",
+                    i, test_ref.file
+                ))
+                .into());
             }
         }
 
@@ -91,8 +99,9 @@ impl OgreProject {
             if let Some(tape_size) = build.tape_size {
                 if tape_size == 0 {
                     return Err(OgreError::InvalidProject(
-                        "build.tape_size must be greater than 0".to_string()
-                    ).into());
+                        "build.tape_size must be greater than 0".to_string(),
+                    )
+                    .into());
                 }
             }
         }
@@ -100,12 +109,10 @@ impl OgreProject {
         // Validate dependencies
         for (name, dep) in &self.dependencies {
             if dep.path.is_none() && dep.version.is_none() {
-                return Err(OgreError::InvalidProject(
-                    format!(
-                        "dependency {:?} must have a 'path' or 'version' field",
-                        name
-                    ),
-                )
+                return Err(OgreError::InvalidProject(format!(
+                    "dependency {:?} must have a 'path' or 'version' field",
+                    name
+                ))
                 .into());
             }
         }
@@ -166,10 +173,7 @@ impl OgreProject {
 
     /// Collect all @fn definitions from dependencies.
     /// Returns a map of function_name -> function_body.
-    pub fn collect_dependency_functions(
-        &self,
-        base: &Path,
-    ) -> Result<HashMap<String, String>> {
+    pub fn collect_dependency_functions(&self, base: &Path) -> Result<HashMap<String, String>> {
         use crate::modes::preprocess::Preprocessor;
 
         let mut all_functions = HashMap::new();
@@ -189,16 +193,14 @@ impl OgreProject {
             // Collect include files from the dependency
             let include_files = dep_project.resolve_include_files(dep_dir)?;
             for file_path in &include_files {
-                let functions =
-                    Preprocessor::collect_functions_from_file(file_path)?;
+                let functions = Preprocessor::collect_functions_from_file(file_path)?;
                 all_functions.extend(functions);
             }
 
             // Also collect from the dependency's entry file
             let entry = dep_project.entry_path(dep_dir);
             if entry.exists() {
-                let functions =
-                    Preprocessor::collect_functions_from_file(&entry)?;
+                let functions = Preprocessor::collect_functions_from_file(&entry)?;
                 all_functions.extend(functions);
             }
 
@@ -601,10 +603,7 @@ utils = { path = "../utils" }
         assert_eq!(proj.dependencies.len(), 2);
         assert!(proj.dependencies.contains_key("mylib"));
         assert!(proj.dependencies.contains_key("utils"));
-        assert_eq!(
-            proj.dependencies["mylib"].path.as_deref(),
-            Some("../mylib")
-        );
+        assert_eq!(proj.dependencies["mylib"].path.as_deref(), Some("../mylib"));
     }
 
     #[test]

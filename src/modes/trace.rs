@@ -37,14 +37,7 @@ pub fn trace_source(source: &str, tape_size: usize, every_n: usize) -> Result<()
     Ok(())
 }
 
-fn print_trace_line(
-    step: u64,
-    op: &str,
-    dp: usize,
-    cell_val: u8,
-    tape: &[u8],
-    center: usize,
-) {
+fn print_trace_line(step: u64, op: &str, dp: usize, cell_val: u8, tape: &[u8], center: usize) {
     // Show a window of cells around the data pointer
     let start = center.saturating_sub(4);
     let end = (center + 5).min(tape.len());
@@ -70,12 +63,7 @@ fn print_trace_line(
 }
 
 /// Format a trace line as a string (for testing).
-pub fn format_trace_line(
-    step: u64,
-    op: &str,
-    dp: usize,
-    cell_val: u8,
-) -> String {
+pub fn format_trace_line(step: u64, op: &str, dp: usize, cell_val: u8) -> String {
     format!(
         "step={:<6} op={:<20} dp={:<5} cell[{}]={:<3}",
         step, op, dp, dp, cell_val

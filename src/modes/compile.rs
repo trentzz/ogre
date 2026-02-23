@@ -153,7 +153,12 @@ pub fn compile(file: &Path, output: Option<&str>, keep: bool) -> Result<()> {
     compile_with_tape_size(file, output, keep, 30_000)
 }
 
-pub fn compile_ex(file: &Path, output: Option<&str>, keep: bool, verbosity: Verbosity) -> Result<()> {
+pub fn compile_ex(
+    file: &Path,
+    output: Option<&str>,
+    keep: bool,
+    verbosity: Verbosity,
+) -> Result<()> {
     compile_with_tape_size_ex(file, output, keep, 30_000, verbosity)
 }
 
