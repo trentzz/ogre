@@ -1,0 +1,74 @@
+[
+  {
+    "name": "print_newline",
+    "brainfuck": "src/test_io_newline.bf",
+    "input": "",
+    "output": "\n"
+  },
+  {
+    "name": "print_space",
+    "brainfuck": "src/test_io_space.bf",
+    "input": "",
+    "output": " "
+  },
+  {
+    "name": "print_zero",
+    "brainfuck": "src/test_io_zero.bf",
+    "input": "",
+    "output": "0"
+  },
+  {
+    "name": "print_tab",
+    "brainfuck": "src/test_io_tab.bf",
+    "input": "",
+    "output": "\t"
+  },
+  {
+    "name": "print_bang",
+    "brainfuck": "src/test_io_bang.bf",
+    "input": "",
+    "output": "!"
+  },
+  {
+    "name": "print_dot",
+    "brainfuck": "src/test_io_dot.bf",
+    "input": "",
+    "output": "."
+  },
+  {
+    "name": "print_comma",
+    "brainfuck": "src/test_io_comma.bf",
+    "input": "",
+    "output": ","
+  },
+  {
+    "name": "print_hash",
+    "brainfuck": "src/test_io_hash.bf",
+    "input": "",
+    "output": "#"
+  },
+  {
+    "name": "print_star",
+    "brainfuck": "src/test_io_star.bf",
+    "input": "",
+    "output": "*"
+  },
+  {
+    "name": "print_eq",
+    "brainfuck": "src/test_io_eq.bf",
+    "input": "",
+    "output": "="
+  },
+  {
+    "name": "print_misc_chars",
+    "brainfuck": "src/test_io_misc.bf",
+    "input": "",
+    "output": "@[]()/\\_|><\""
+  },
+  {
+    "name": "read_char and print_char",
+    "brainfuck": "src/test_io_readchar.bf",
+    "input": "X",
+    "output": "X"
+  }
+]

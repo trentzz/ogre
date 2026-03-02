@@ -9,12 +9,107 @@ use super::directive_parser::{
 use super::source_map::{SourceLocation, SourceMap};
 use crate::error::OgreError;
 
+/// Compute Levenshtein edit distance between two strings.
+fn levenshtein(a: &str, b: &str) -> usize {
+    let a_len = a.len();
+    let b_len = b.len();
+    if a_len == 0 {
+        return b_len;
+    }
+    if b_len == 0 {
+        return a_len;
+    }
+
+    let mut prev: Vec<usize> = (0..=b_len).collect();
+    let mut curr = vec![0; b_len + 1];
+
+    for (i, ca) in a.chars().enumerate() {
+        curr[0] = i + 1;
+        for (j, cb) in b.chars().enumerate() {
+            let cost = if ca == cb { 0 } else { 1 };
+            curr[j + 1] = (prev[j] + cost).min(prev[j + 1] + 1).min(curr[j] + 1);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+    prev[b_len]
+}
+
+/// Find close matches for `name` among `candidates` (Levenshtein distance <= max_dist).
+fn find_suggestions(name: &str, candidates: &[&str], max_dist: usize) -> Vec<String> {
+    let mut matches: Vec<(usize, String)> = candidates
+        .iter()
+        .filter_map(|c| {
+            let d = levenshtein(name, c);
+            if d <= max_dist && d > 0 {
+                Some((d, c.to_string()))
+            } else {
+                None
+            }
+        })
+        .collect();
+    matches.sort_by_key(|(d, _)| *d);
+    matches.into_iter().map(|(_, s)| s).collect()
+}
+
+/// Build a helpful error message for unknown function calls.
+fn unknown_function_message(name: &str, known_functions: &HashMap<String, String>) -> String {
+    let candidates: Vec<&str> = known_functions.keys().map(|s| s.as_str()).collect();
+    let suggestions = find_suggestions(name, &candidates, 3);
+
+    let mut msg = format!("unknown function: '{}'", name);
+    if let Some(best) = suggestions.first() {
+        msg.push_str(&format!(". Did you mean '{}'?", best));
+    }
+
+    // Check if the function exists in an unimported stdlib module
+    let mut available_in: Vec<String> = Vec::new();
+    for module_name in stdlib_modules() {
+        if let Some(source) = get_stdlib_module(module_name) {
+            // Quick check: does this module define a function with this name?
+            let pattern = format!("@fn {} {{", name);
+            if source.contains(&pattern) {
+                available_in.push(module_name.to_string());
+            }
+        }
+    }
+    if !available_in.is_empty() {
+        msg.push_str(&format!(
+            "\n  hint: '{}' is defined in {}. Add: @import \"std/{}.bf\"",
+            name,
+            available_in
+                .iter()
+                .map(|m| format!("std/{}.bf", m))
+                .collect::<Vec<_>>()
+                .join(", "),
+            available_in[0]
+        ));
+    }
+
+    msg
+}
+
+/// Build a helpful error message for unknown stdlib module imports.
+fn unknown_module_message(name: &str) -> String {
+    let modules = stdlib_modules();
+    let candidates: Vec<&str> = modules.to_vec();
+    let suggestions = find_suggestions(name, &candidates, 3);
+
+    let mut msg = format!("unknown standard library module: '{}'", name);
+    if let Some(best) = suggestions.first() {
+        msg.push_str(&format!(". Did you mean '{}'?", best));
+    }
+    msg.push_str(&format!("\n  available modules: {}", modules.join(", ")));
+    msg
+}
+
 // Embedded standard library modules
 const STDLIB_IO: &str = include_str!("../../stdlib/io.bf");
 const STDLIB_MATH: &str = include_str!("../../stdlib/math.bf");
 const STDLIB_MEMORY: &str = include_str!("../../stdlib/memory.bf");
 const STDLIB_ASCII: &str = include_str!("../../stdlib/ascii.bf");
 const STDLIB_DEBUG: &str = include_str!("../../stdlib/debug.bf");
+const STDLIB_STRING: &str = include_str!("../../stdlib/string.bf");
+const STDLIB_LOGIC: &str = include_str!("../../stdlib/logic.bf");
 
 /// Get the source code for a standard library module by name.
 pub fn get_stdlib_module(name: &str) -> Option<&'static str> {
@@ -24,13 +119,15 @@ pub fn get_stdlib_module(name: &str) -> Option<&'static str> {
         "memory" => Some(STDLIB_MEMORY),
         "ascii" => Some(STDLIB_ASCII),
         "debug" => Some(STDLIB_DEBUG),
+        "string" => Some(STDLIB_STRING),
+        "logic" => Some(STDLIB_LOGIC),
         _ => None,
     }
 }
 
 /// List all available standard library module names.
 pub fn stdlib_modules() -> &'static [&'static str] {
-    &["ascii", "debug", "io", "math", "memory"]
+    &["ascii", "debug", "io", "logic", "math", "memory", "string"]
 }
 
 /// Result type for preprocessing with documentation: (expanded_code, functions, fn_docs).
@@ -236,7 +333,7 @@ impl Preprocessor {
 
                             let stdlib_source =
                                 get_stdlib_module(module_name).ok_or_else(|| {
-                                    OgreError::UnknownStdModule(module_name.to_string())
+                                    OgreError::UnknownStdModule(unknown_module_message(module_name))
                                 })?;
 
                             let sentinel = PathBuf::from(format!("<stdlib:{}>", module_name));
@@ -465,7 +562,12 @@ impl Preprocessor {
                     let body = self
                         .functions
                         .get(&name)
-                        .ok_or_else(|| OgreError::UnknownFunction(name.clone()))?
+                        .ok_or_else(|| {
+                            OgreError::UnknownFunction(unknown_function_message(
+                                &name,
+                                &self.functions,
+                            ))
+                        })?
                         .clone();
 
                     let fn_file = self
@@ -595,7 +697,7 @@ impl Preprocessor {
 
                             let stdlib_source =
                                 get_stdlib_module(module_name).ok_or_else(|| {
-                                    OgreError::UnknownStdModule(module_name.to_string())
+                                    OgreError::UnknownStdModule(unknown_module_message(module_name))
                                 })?;
 
                             let sentinel = PathBuf::from(format!("<stdlib:{}>", module_name));
@@ -756,10 +858,9 @@ impl Preprocessor {
                         return Err(OgreError::CycleDetected(cycle.join(" → ")).into());
                     }
 
-                    let body = self
-                        .functions
-                        .get(&name)
-                        .ok_or_else(|| OgreError::UnknownFunction(name.clone()))?;
+                    let body = self.functions.get(&name).ok_or_else(|| {
+                        OgreError::UnknownFunction(unknown_function_message(&name, &self.functions))
+                    })?;
 
                     stack.push(name.clone());
                     let expanded = self.expand(body, stack)?;

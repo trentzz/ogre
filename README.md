@@ -1,6 +1,8 @@
 # ogre
 
-A Cargo-like all-in-one brainfuck tool. One binary covering the full development lifecycle for brainfuck programs: running, compiling to a native binary, formatting, static analysis, structured testing, code generation, an interactive REPL, and a GDB-style debugger.
+A Cargo-like all-in-one brainfuck tool. One binary covering the full development lifecycle for brainfuck programs: running, compiling to native binaries, formatting, static analysis, linting, structured testing, code generation, an interactive REPL, a GDB-style debugger, and more.
+
+The **brainfunct** dialect extends standard brainfuck with named functions via `@fn`/`@call`/`@import` macros, a compile-time preprocessor, and a built-in standard library.
 
 ---
 
@@ -8,17 +10,12 @@ A Cargo-like all-in-one brainfuck tool. One binary covering the full development
 
 - [Installation](#installation)
 - [Quick Start](#quick-start)
+- [Brainfunct Macros](#brainfunct-macros)
+- [Standard Library](#standard-library)
+- [Project Manifest](#project-manifest)
 - [Commands](#commands)
-  - [run](#run)
-  - [compile](#compile)
-  - [start](#start)
-  - [debug](#debug)
-  - [format](#format)
-  - [analyse](#analyse)
-  - [test](#test)
-  - [new](#new)
-  - [generate](#generate)
 - [Test File Format](#test-file-format)
+- [Examples](#examples)
 - [Building from Source](#building-from-source)
 
 ---
@@ -29,12 +26,6 @@ Requires [Rust and Cargo](https://rustup.rs). Install directly from GitHub:
 
 ```sh
 cargo install --git https://github.com/trentzz/ogre
-```
-
-To install from a specific branch:
-
-```sh
-cargo install --git https://github.com/trentzz/ogre --branch rust-rewrite
 ```
 
 Once installed, the `ogre` binary is available on your PATH.
@@ -61,319 +52,146 @@ ogre start
 
 # Scaffold a new project
 ogre new myproject
+
+# Use the standard library
+echo '@import "std/io.bf"' > hello.bf
+echo '@call print_newline' >> hello.bf
+ogre run hello.bf
 ```
+
+---
+
+## Brainfunct Macros
+
+Brainfunct extends brainfuck with compile-time macros handled by the preprocessor.
+
+```brainfuck
+@import "lib/utils.bf"
+@import "std/io.bf"
+
+@fn greet {
+    @call print_newline
+}
+
+@const REPEAT 5
+
+++ @call greet [-]
+@use REPEAT
+```
+
+| Directive | Description |
+|-----------|-------------|
+| `@import "path"` | Import `@fn` definitions from another file (relative to importing file) |
+| `@import "std/module.bf"` | Import a built-in standard library module |
+| `@fn name { body }` | Define a named macro function |
+| `@call name` | Inline-expand a function at the call site |
+| `@const NAME value` | Define a numeric constant |
+| `@use NAME` | Expand a constant to N `+` characters |
+| `@doc text` | Docstring above `@fn`, shown by `ogre doc` |
+
+Top-level code in imported files is discarded (only `@fn` definitions are kept).
+Cycle detection prevents `A->B->A` or `A->A` recursion.
+
+---
+
+## Standard Library
+
+ogre ships with a built-in standard library of reusable functions. Import modules with `@import "std/module.bf"`.
+
+| Module | Description |
+|--------|-------------|
+| `std/io.bf` | I/O utilities: `print_newline`, `print_space`, `print_tab`, `read_char`, `print_char`, and 18 more character printers |
+| `std/math.bf` | Arithmetic: `zero`, `inc`, `dec`, `double`, `triple`, `multiply_by_10`, `copy_right`, `is_zero`, and more |
+| `std/memory.bf` | Memory ops: `clear`, `clear2`-`clear5`, `swap`, `dup`, `copy_right`, `copy_left`, `rotate3`, and more |
+| `std/ascii.bf` | ASCII utilities: `to_upper`, `to_lower`, `is_digit`, `is_space`, `digit_to_char`, `char_to_digit`, and character printers |
+| `std/string.bf` | String/text: `skip_char`, `skip_spaces`, `skip_line`, `read_decimal` |
+| `std/logic.bf` | Boolean logic: `not`, `bool`, `and`, `or`, `equal` |
+| `std/debug.bf` | Debugging: `dump_cell`, `dump_and_newline`, `marker_start`, `marker_end` |
+
+```sh
+ogre stdlib list          # List all modules
+ogre stdlib show io       # View a module's source
+```
+
+See [docs/stdlib-reference.md](docs/stdlib-reference.md) for complete documentation.
+
+---
+
+## Project Manifest
+
+ogre projects use an `ogre.toml` manifest file:
+
+```toml
+[project]
+name = "myproject"
+version = "0.1.0"
+description = "My brainfuck project"
+author = "Alice"
+entry = "src/main.bf"
+
+[build]
+include = [
+    "src/",
+    "lib/utils.bf",
+]
+
+[[tests]]
+name = "Basic"
+file = "tests/basic.json"
+```
+
+When a file argument is omitted from any command, ogre walks the CWD upward looking for `ogre.toml` and uses the project configuration.
 
 ---
 
 ## Commands
 
-### `run`
-
-Interprets and executes a brainfuck file directly. If the program reads input (`,`), it is read from stdin.
-
-```sh
-ogre run <file>
-```
-
-**Example:**
-
-```sh
-ogre run hello.bf
-# Hello World!
-
-echo "Hello" | ogre run cat.bf
-# Hello
-```
-
----
-
-### `compile`
-
-Compiles a brainfuck file to a native binary by first translating it to C, then invoking `gcc`. Requires `gcc` to be installed.
-
-```sh
-ogre compile <file> [-o <output>] [-k/--keep]
-```
-
-| Flag | Description |
-|---|---|
-| `-o <name>` | Output binary name (defaults to the input filename without extension) |
-| `-k`, `--keep` | Keep the intermediate `.c` file instead of deleting it |
-
-**Example:**
-
-```sh
-ogre compile hello.bf
-# Compiled to: hello
-
-ogre compile hello.bf -o greet --keep
-# Compiled to: greet
-# (greet.c is also kept)
-
-./hello
-# Hello World!
-```
-
----
-
-### `start`
-
-An interactive brainfuck REPL. Type BF snippets line by line; the tape state persists between inputs. After each snippet executes, the memory window around the data pointer is printed.
-
-```sh
-ogre start
-```
-
-**Session example:**
-
-```
-ogre interactive interpreter — type BF code, 'reset' to clear, 'exit' to quit
->>> +++++
-  tape: [ >0:5<  1:0  2:0  3:0 ]
->>> >+++
-  tape: [ 0:5  >1:3<  2:0  3:0 ]
->>> .
-  (prints ASCII 3)
-  tape: [ 0:5  >1:3<  2:0  3:0 ]
->>> reset
-Tape reset.
->>> exit
-Goodbye.
-```
-
-Special commands: `reset` (clears the tape), `exit` / `quit`.
-
----
-
-### `debug`
-
-A GDB-style interactive debugger. Loads a brainfuck file and pauses before execution. Execution is driven by commands; after every pause the current instruction and memory state are shown.
-
-```sh
-ogre debug <file>
-```
-
-**Debugger commands:**
+### Core
 
 | Command | Description |
-|---|---|
-| `step` / `step <n>` | Execute 1 (or n) instruction(s) and pause |
-| `continue` / `c` | Run until the next breakpoint or end of program |
-| `breakpoint <n>` | Set a breakpoint at instruction index n |
-| `breakpoint list` | List all breakpoints |
-| `breakpoint delete <n>` | Remove breakpoint n |
-| `jump <n>` | Move the instruction pointer to index n without executing |
-| `peek` / `peek <n>` | Show memory around the current pointer (or cell n) |
-| `show instruction` / `show instruction <n>` | Show current (or nth) instruction in context |
-| `show memory` | Dump a wider range of memory cells |
-| `help` | Print the command reference |
-| `exit` / `quit` / `q` | Quit the debugger |
+|---------|-------------|
+| `ogre run [file]` | Preprocess and interpret a brainfuck file |
+| `ogre compile [file] [-o output] [-k]` | Compile to native binary via C |
+| `ogre build [-o output] [-k]` | Build a project (loads `ogre.toml`) |
+| `ogre start` | Interactive REPL with memory display |
+| `ogre debug [file]` | GDB-style interactive debugger |
 
-**Session example:**
+### Code Quality
 
-```
-ogre debugger — type 'help' for commands
-  ip=0 op='+'  dp=0  val=0
-  tape: [ >0:0<  1:0  2:0  3:0 ]
-(ogre-dbg) step 3
-  ip=3 op='['  dp=0  val=3
-  tape: [ >0:3<  1:0  2:0  3:0 ]
-(ogre-dbg) breakpoint 8
-Breakpoint set at instruction 8
-(ogre-dbg) continue
-Hit breakpoint at 8.
-  ip=8 op='-'  dp=0  val=2
-  tape: [ >0:2<  1:1  2:0  3:0 ]
-(ogre-dbg) peek
-  tape: [ >0:2<  1:1  2:0  3:0  4:0  5:0  6:0 ]
-(ogre-dbg) exit
-```
+| Command | Description |
+|---------|-------------|
+| `ogre format [file] [options]` | Format brainfuck source in-place |
+| `ogre analyse [file] [--verbose] [--in-place]` | Static analysis and linting |
+| `ogre check [file]` | Validate brackets, `@call` references, and imports |
 
----
+### Testing & Benchmarking
 
-### `format`
+| Command | Description |
+|---------|-------------|
+| `ogre test [test-file.json]` | Run structured JSON test suites |
+| `ogre bench [file]` | Count instructions executed and report wall time |
+| `ogre trace [file]` | Print tape state after every instruction |
 
-Formats a brainfuck file **in-place**. Loop bodies are indented, long lines are wrapped, and runs of the same operator are spaced for readability.
+### Project Management
 
-```sh
-ogre format <file> [options]
-```
+| Command | Description |
+|---------|-------------|
+| `ogre new <name>` | Scaffold a new project directory |
+| `ogre init` | Initialize `ogre.toml` in the current directory |
+| `ogre pack [file]` | Output fully preprocessed pure brainfuck |
+| `ogre doc [file] [--stdlib]` | Generate documentation for functions |
 
-| Flag | Default | Description |
-|---|---|---|
-| `--indent <n>` | `4` | Spaces of indentation per loop level |
-| `--linewidth <n>` | `80` | Maximum line width before wrapping |
-| `--grouping <n>` | `5` | Insert a space every n consecutive identical operators |
-| `--label-functions` | off | *(brainfunct)* Insert comment labels above each function |
-| `-p`, `--preserve-comments` | off | Keep non-BF characters as inline comments |
+### Code Generation & Stdlib
 
-**Example — before:**
+| Command | Description |
+|---------|-------------|
+| `ogre generate helloworld [-o file]` | Generate Hello World program |
+| `ogre generate string <str> [-o file]` | Generate code to print a string |
+| `ogre generate loop <n> [-o file]` | Generate a counted loop scaffold |
+| `ogre stdlib list` | List standard library modules |
+| `ogre stdlib show <module>` | View a module's source code |
 
-```
-++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.
-```
-
-**After `ogre format hello.bf`:**
-
-```
-+++++ +++
-[
-    >++++
-    [
-        >++>+++>+++>+<<<<-
-    ]
-    >+>+>->>+
-    [
-        <
-    ]
-    <-
-]
->>.>---.+++++ ++..+++.>>.<-.<.+++.----- -.----- ---.>>+.>++.
-```
-
-If the nesting depth multiplied by the indent would exceed `linewidth - 10`, ogre errors rather than producing unreadable output.
-
----
-
-### `analyse`
-
-Performs static analysis on a brainfuck file and prints a report covering:
-
-- Bracket matching errors
-- Total input (`,`) and output (`.`) operation counts
-- Net data pointer movement (or reports indeterminate if loops are present)
-
-```sh
-ogre analyse <file> [--verbose] [--in-place]
-```
-
-| Flag | Description |
-|---|---|
-| `--verbose` | Extra detail: per-operator counts |
-| `--in-place` | Embed the analysis report as comments at the top of the source file |
-
-**Example output:**
-
-```sh
-ogre analyse hello.bf
-```
-
-```
-Brackets: OK
-Input operations (,):  0
-Output operations (.): 13
-Data pointer: indeterminate (program contains loops)
-```
-
-**With `--verbose`:**
-
-```
-Brackets: OK
-Input operations (,):  0
-Output operations (.): 13
-Data pointer: indeterminate (program contains loops)
-
-=== VERBOSE ===
-  > (move right): 20
-  < (move left):  14
-  + (increment):  48
-  - (decrement):  31
-  [ (loop open):  4
-  ] (loop close): 4
-```
-
----
-
-### `test`
-
-Runs structured tests defined in a JSON file. Each entry specifies a brainfuck script, optional stdin input, and expected stdout output. ogre runs the interpreter against each case and reports pass/fail.
-
-```sh
-ogre test <test-file.json>
-```
-
-Exits with a non-zero status if any test fails, making it suitable for CI pipelines.
-
-**Example output:**
-
-```
-PASS  hello world
-PASS  cat passthrough
-FAIL  multiply
-      expected: "\f"
-      actual:   "\v"
-
-2/3 tests passed
-Error: 1 test(s) failed
-```
-
-See [Test File Format](#test-file-format) for the JSON schema.
-
----
-
-### `new`
-
-Scaffolds a new brainfuck project directory with a starter `.bf` file and a `tests.json` template.
-
-```sh
-ogre new <name>
-```
-
-**Example:**
-
-```sh
-ogre new myproject
-# Created project 'myproject':
-#   myproject/myproject.bf
-#   myproject/tests.json
-```
-
-The generated `tests.json` is pre-filled with a template entry pointing at the new `.bf` file, ready to be filled in.
-
----
-
-### `generate`
-
-Generates brainfuck code for common patterns. Output goes to stdout unless `-o` is given.
-
-```sh
-ogre generate <subcommand> [options]
-```
-
-#### `generate helloworld`
-
-Outputs the classic Hello World brainfuck program.
-
-```sh
-ogre generate helloworld
-# ++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.
-
-ogre generate helloworld -o hello.bf
-# Written to: hello.bf
-```
-
-#### `generate string <str>`
-
-Generates a program that prints an arbitrary string.
-
-```sh
-ogre generate string "Hi!"
-# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++.-------.+++++++++++++++++++++++.
-
-ogre generate string "Hi!" | ogre run /dev/stdin
-# Hi!
-```
-
-#### `generate loop <n>`
-
-Generates a loop scaffold that iterates exactly `n` times. Cell 0 is used as the counter (ends at 0); cell 1 accumulates the count.
-
-```sh
-ogre generate loop 5
-# +++++[>+<-]
-```
-
-Use this as a starting point when you need a counted loop.
+See [docs/cli-reference.md](docs/cli-reference.md) for the full CLI reference with all flags and options.
 
 ---
 
@@ -385,25 +203,44 @@ Test files are JSON arrays. Each object describes one test case:
 [
   {
     "name": "hello world",
-    "brainfuck": "scripts/hello_world.bf",
+    "brainfuck": "src/main.bf",
     "input": "",
     "output": "Hello World!\n"
-  },
-  {
-    "name": "cat passthrough",
-    "brainfuck": "scripts/cat.bf",
-    "input": "Hello",
-    "output": "Hello"
   }
 ]
 ```
 
 | Field | Type | Description |
 |---|---|---|
-| `name` | string | Human-readable test name shown in output |
-| `brainfuck` | string | Path to the `.bf` file (relative to where `ogre test` is run) |
-| `input` | string | Data fed to stdin (`,` instructions) |
-| `output` | string | Expected stdout output to match against |
+| `name` | string | Human-readable test name |
+| `brainfuck` | string | Path to the `.bf` file (relative to JSON file's directory) |
+| `input` | string | Data fed to stdin |
+| `output` | string | Expected stdout output |
+| `output_regex` | string | Regex pattern to match against output (alternative to `output`) |
+
+---
+
+## Examples
+
+The `examples/` directory contains complete ogre projects:
+
+| Example | Description |
+|---------|-------------|
+| `hello/` | Classic Hello World |
+| `cat/` | Cat program (echo stdin) |
+| `fibonacci/` | Fibonacci number printer |
+| `multifile/` | Multi-file project with `@import` |
+| `stdlib-demo/` | Standard library usage demo |
+| `convert/` | CLI tool with argument parsing (`--upper`, `--lower`, `--ascii-to-decimal`, `--decimal-to-ascii`) |
+| `stdlib-tests/` | Comprehensive test suite for all stdlib functions |
+
+Run any example:
+
+```sh
+cd examples/hello
+ogre run
+ogre test
+```
 
 ---
 

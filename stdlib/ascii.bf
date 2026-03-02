@@ -17,3 +17,51 @@
 @fn print_colon {
     ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++.[-]
 }
+
+@doc Subtract 32 from cell 0 (lowercase to uppercase)
+@fn to_upper {
+    --------------------------------
+}
+
+@doc Add 32 to cell 0 (uppercase to lowercase)
+@fn to_lower {
+    ++++++++++++++++++++++++++++++++
+}
+
+@doc Set cell 1 to 1 if cell 0 is a digit (48 to 57). Uses cells 1 to 3.
+@fn is_digit {
+    [>+>+<<-]>>[<<+>>-]<<
+    >
+    ------------------------------------------------
+    ++++++++++
+    [>+>+<<-]>>[<<+>>-]<
+    [<->-]<
+    [[-]>-<]>
+    [<+>-]<
+    <
+    >>[<<+>>-]<<
+    >[-]>[-]<
+    <[>+<-]>[->>+<<]>>[-<+<+>>]<<
+    >[-]>[-]<
+    <
+}
+
+@doc Set cell 1 to 1 if cell 0 is space (32). Nondestructive.
+@fn is_space {
+    [>+>+<<-]>>[<<+>>-]<
+    --------------------------------
+    >+<
+    [>-<[-]]>
+    [<+>-]<
+    <
+}
+
+@doc Add 48 to cell 0 (numeric value to ASCII char)
+@fn digit_to_char {
+    ++++++++++++++++++++++++++++++++++++++++++++++++
+}
+
+@doc Subtract 48 from cell 0 (ASCII char to numeric value)
+@fn char_to_digit {
+    ------------------------------------------------
+}

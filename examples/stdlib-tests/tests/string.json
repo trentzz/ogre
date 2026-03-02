@@ -1,0 +1,8 @@
+[
+  {
+    "name": "skip_char skips one character",
+    "brainfuck": "src/test_string_skip.bf",
+    "input": "AB",
+    "output": "B"
+  }
+]

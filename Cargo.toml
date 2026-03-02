@@ -2,6 +2,13 @@
 name = "ogre"
 version = "0.1.0"
 edition = "2021"
+description = "A Cargo-like all-in-one brainfuck toolchain: interpreter, compiler, formatter, linter, debugger, REPL, and more"
+repository = "https://github.com/trentzz/ogre"
+homepage = "https://github.com/trentzz/ogre"
+license = "MIT"
+readme = "README.md"
+keywords = ["brainfuck", "interpreter", "compiler", "debugger", "toolchain"]
+categories = ["command-line-utilities", "compilers", "development-tools"]
 
 [lib]
 name = "ogre"

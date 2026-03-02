@@ -23,13 +23,13 @@ pub enum OgreError {
     #[error("file not found: {0}")]
     FileNotFound(String),
 
-    #[error("unknown function: {0}")]
+    #[error("{0}")]
     UnknownFunction(String),
 
     #[error("unknown directive: @{0}")]
     UnknownDirective(String),
 
-    #[error("unknown standard library module: {0}")]
+    #[error("{0}")]
     UnknownStdModule(String),
 
     #[error("no C compiler found. Install gcc, clang, or ensure 'cc' is available on PATH")]

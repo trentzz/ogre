@@ -1,0 +1,26 @@
+[
+  {
+    "name": "print_A print_B print_exclaim print_dash print_colon",
+    "brainfuck": "src/test_ascii_print.bf",
+    "input": "",
+    "output": "AB!-:"
+  },
+  {
+    "name": "to_upper converts lowercase",
+    "brainfuck": "src/test_ascii_toupper.bf",
+    "input": "",
+    "output": "A"
+  },
+  {
+    "name": "to_lower converts uppercase",
+    "brainfuck": "src/test_ascii_tolower.bf",
+    "input": "",
+    "output": "a"
+  },
+  {
+    "name": "digit_to_char and char_to_digit",
+    "brainfuck": "src/test_ascii_digitchar.bf",
+    "input": "",
+    "output": "73"
+  }
+]

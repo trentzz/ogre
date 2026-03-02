@@ -1,0 +1,26 @@
+[
+  {
+    "name": "clear5 zeros five cells",
+    "brainfuck": "src/test_mem_clear.bf",
+    "input": "",
+    "output": "00000"
+  },
+  {
+    "name": "swap exchanges cells",
+    "brainfuck": "src/test_mem_swap.bf",
+    "input": "",
+    "output": "73"
+  },
+  {
+    "name": "dup duplicates cell",
+    "brainfuck": "src/test_mem_dup.bf",
+    "input": "",
+    "output": "55"
+  },
+  {
+    "name": "push_right moves and advances",
+    "brainfuck": "src/test_mem_pushpull.bf",
+    "input": "",
+    "output": "40"
+  }
+]

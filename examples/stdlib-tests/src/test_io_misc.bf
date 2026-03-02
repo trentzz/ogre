@@ -1,0 +1,13 @@
+@import "std/io.bf"
+@call print_at
+@call print_lbracket
+@call print_rbracket
+@call print_lparen
+@call print_rparen
+@call print_slash
+@call print_backslash
+@call print_underscore
+@call print_pipe
+@call print_gt
+@call print_lt
+@call print_quote

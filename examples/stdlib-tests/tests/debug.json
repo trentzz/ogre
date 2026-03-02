@@ -1,0 +1,14 @@
+[
+  {
+    "name": "dump_cell prints cell value",
+    "brainfuck": "src/test_debug.bf",
+    "input": "",
+    "output": "A"
+  },
+  {
+    "name": "marker_start and marker_end",
+    "brainfuck": "src/test_debug_marker.bf",
+    "input": "",
+    "output": "<?"
+  }
+]
