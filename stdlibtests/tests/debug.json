@@ -1,0 +1,50 @@
+[
+  {
+    "name": "dump_cell prints cell value",
+    "brainfuck": "src/test_debug.bf",
+    "input": "",
+    "output": "A"
+  },
+  {
+    "name": "marker_start and marker_end",
+    "brainfuck": "src/test_debug_marker.bf",
+    "input": "",
+    "output": "<?"
+  },
+  {
+    "name": "separator prints debug divider",
+    "brainfuck": "src/test_debug_separator.bf",
+    "input": "",
+    "output": "---\n"
+  },
+  {
+    "name": "dump_decimal prints 42 with newline",
+    "brainfuck": "src/test_debug_dumpdec_42.bf",
+    "input": "",
+    "output": "42\n"
+  },
+  {
+    "name": "dump_decimal prints 0 with newline",
+    "brainfuck": "src/test_debug_dumpdec_0.bf",
+    "input": "",
+    "output": "0\n"
+  },
+  {
+    "name": "dump_hex prints 4F for 79",
+    "brainfuck": "src/test_debug_dumphex_4f.bf",
+    "input": "",
+    "output": "4F"
+  },
+  {
+    "name": "dump_hex prints FF for 255",
+    "brainfuck": "src/test_debug_dumphex_ff.bf",
+    "input": "",
+    "output": "FF"
+  },
+  {
+    "name": "dump_hex prints 00 for 0",
+    "brainfuck": "src/test_debug_dumphex_00.bf",
+    "input": "",
+    "output": "00"
+  }
+]

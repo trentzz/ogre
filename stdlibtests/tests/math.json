@@ -1,0 +1,86 @@
+[
+  {
+    "name": "zero clears cell",
+    "brainfuck": "src/test_math_zero.bf",
+    "input": "",
+    "output": "0"
+  },
+  {
+    "name": "inc adds 1",
+    "brainfuck": "src/test_math_inc.bf",
+    "input": "",
+    "output": "1"
+  },
+  {
+    "name": "dec subtracts 1",
+    "brainfuck": "src/test_math_dec.bf",
+    "input": "",
+    "output": "1"
+  },
+  {
+    "name": "inc5 adds 5",
+    "brainfuck": "src/test_math_inc5.bf",
+    "input": "",
+    "output": "5"
+  },
+  {
+    "name": "inc10 adds 10",
+    "brainfuck": "src/test_math_inc10.bf",
+    "input": "",
+    "output": "0"
+  },
+  {
+    "name": "double doubles value",
+    "brainfuck": "src/test_math_double.bf",
+    "input": "",
+    "output": "6"
+  },
+  {
+    "name": "triple triples value",
+    "brainfuck": "src/test_math_triple.bf",
+    "input": "",
+    "output": "9"
+  },
+  {
+    "name": "copy_right preserves and copies",
+    "brainfuck": "src/test_math_copyright.bf",
+    "input": "",
+    "output": "55"
+  },
+  {
+    "name": "move_right moves value",
+    "brainfuck": "src/test_math_moveright.bf",
+    "input": "",
+    "output": "7"
+  },
+  {
+    "name": "add_to_next moves value to next cell",
+    "brainfuck": "src/test_math_addtonext.bf",
+    "input": "",
+    "output": "04"
+  },
+  {
+    "name": "square squares value (3*3=9)",
+    "brainfuck": "src/test_math_square.bf",
+    "input": "",
+    "output": "9"
+  },
+  {
+    "name": "modulo computes remainder (7%3=1)",
+    "brainfuck": "src/test_math_modulo.bf",
+    "input": "",
+    "output": "1"
+  },
+  {
+    "name": "multiply multiplies two cells (2*3=6)",
+    "brainfuck": "src/test_math_multiply.bf",
+    "input": "",
+    "output": "6"
+  },
+  {
+    "name": "is_positive returns 0 for zero and 1 for nonzero",
+    "brainfuck": "src/test_math_ispositive.bf",
+    "input": "",
+    "output": "01"
+  }
+]

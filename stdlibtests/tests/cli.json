@@ -1,0 +1,32 @@
+[
+  {
+    "name": "skip_dashes skips -- prefix",
+    "brainfuck": "src/test_cli_skipdashes.bf",
+    "input": "--hello",
+    "output": "h"
+  },
+  {
+    "name": "read_flag_char extracts flag letter",
+    "brainfuck": "src/test_cli_readflag.bf",
+    "input": "--u rest",
+    "output": "u"
+  },
+  {
+    "name": "print_error_prefix outputs Error: ",
+    "brainfuck": "src/test_cli_errorprefix.bf",
+    "input": "",
+    "output": "Error: "
+  },
+  {
+    "name": "print_usage_prefix outputs Usage: ",
+    "brainfuck": "src/test_cli_usageprefix.bf",
+    "input": "",
+    "output": "Usage: "
+  },
+  {
+    "name": "match_char detects equal and unequal pairs",
+    "brainfuck": "src/test_cli_match.bf",
+    "input": "",
+    "output": "10"
+  }
+]

@@ -1,0 +1,8 @@
+[
+  {
+    "name": "prints fibonacci numbers",
+    "brainfuck": "../src/main.bf",
+    "input": "",
+    "output_regex": "^[0-9\\s]+"
+  }
+]

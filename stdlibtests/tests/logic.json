@@ -1,0 +1,62 @@
+[
+  {
+    "name": "not inverts zero and nonzero",
+    "brainfuck": "src/test_logic_not.bf",
+    "input": "",
+    "output": "10"
+  },
+  {
+    "name": "bool normalizes to 0 or 1",
+    "brainfuck": "src/test_logic_bool.bf",
+    "input": "",
+    "output": "01"
+  },
+  {
+    "name": "or returns 1 if either nonzero",
+    "brainfuck": "src/test_logic_or.bf",
+    "input": "",
+    "output": "01"
+  },
+  {
+    "name": "and boolifies cell 0",
+    "brainfuck": "src/test_logic_and.bf",
+    "input": "",
+    "output": "110"
+  },
+  {
+    "name": "xor returns 1 if exactly one input nonzero",
+    "brainfuck": "src/test_logic_xor.bf",
+    "input": "",
+    "output": "10"
+  },
+  {
+    "name": "nand returns NOT AND of inputs",
+    "brainfuck": "src/test_logic_nand.bf",
+    "input": "",
+    "output": "01"
+  },
+  {
+    "name": "greater_than compares two cells",
+    "brainfuck": "src/test_logic_gt.bf",
+    "input": "",
+    "output": "10"
+  },
+  {
+    "name": "less_than compares two cells",
+    "brainfuck": "src/test_logic_lt.bf",
+    "input": "",
+    "output": "10"
+  },
+  {
+    "name": "equal returns 1 for equal values 0 for unequal",
+    "brainfuck": "src/test_logic_equal.bf",
+    "input": "",
+    "output": "10"
+  },
+  {
+    "name": "if_nonzero returns value when condition true else 0",
+    "brainfuck": "src/test_logic_ifnonzero.bf",
+    "input": "",
+    "output": "50"
+  }
+]

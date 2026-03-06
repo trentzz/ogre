@@ -1,0 +1,43 @@
+[package]
+name = "ogre"
+version = "0.1.0"
+edition = "2021"
+description = "A Cargo-like all-in-one brainfuck toolchain: interpreter, compiler, formatter, linter, debugger, REPL, and more"
+repository = "https://github.com/trentzz/ogre"
+homepage = "https://github.com/trentzz/ogre"
+license = "MIT"
+readme = "README.md"
+keywords = ["brainfuck", "interpreter", "compiler", "debugger", "toolchain"]
+categories = ["command-line-utilities", "compilers", "development-tools"]
+
+[lib]
+name = "ogre"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ogre"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0.97"
+clap = { version = "4.5.31", features = ["derive"] }
+colored = "2"
+glob = "0.3"
+notify = "6"
+regex = "1"
+rustyline = "14"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+similar = "2"
+thiserror = "1"
+toml = "0.8"
+
+[dev-dependencies]
+assert_cmd = "2"
+criterion = { version = "0.5", features = ["html_reports"] }
+predicates = "3"
+tempfile = "3"
+
+[[bench]]
+name = "interpreter"
+harness = false

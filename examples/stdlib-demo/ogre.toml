@@ -1,0 +1,12 @@
+[project]
+name = "stdlib-demo"
+version = "0.1.0"
+description = "Demonstrates usage of the ogre standard library"
+entry = "src/main.bf"
+
+[build]
+include = ["src/"]
+
+[[tests]]
+name = "Basic"
+file = "tests/basic.json"

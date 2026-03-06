@@ -1,0 +1,8 @@
+[
+  {
+    "name": "prints hello world",
+    "brainfuck": "../src/main.bf",
+    "input": "",
+    "output": "Hello World!\n"
+  }
+]

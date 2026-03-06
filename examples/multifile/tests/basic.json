@@ -1,0 +1,8 @@
+[
+  {
+    "name": "prints stars",
+    "brainfuck": "../src/main.bf",
+    "input": "",
+    "output": "***"
+  }
+]
