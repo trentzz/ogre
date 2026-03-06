@@ -12,7 +12,7 @@ skip remaining flag chars
 move mode from c1 to c0
 >[-<+>]<
 
-c0 has mode char: a=97 d=100 l=108 u=117
+c0 has mode char: a=97 d=100 l=108 r=114 u=117
 
 subtract 97 to check for a
 -------------------------------------------------------------------------------------------------
@@ -53,8 +53,19 @@ subtract 8 more to check for l (total 108)
     >[-]>[-]
 ]<<
 
-subtract 9 more to check for u (total 117)
----------
+subtract 6 more to check for r (total 114)
+------
+[>+>+<<-]>>[<<+>>-]<<
+>>+<[>-<[-]]
+>[
+    -
+    <<[-]
+    @call do_swap_case
+    >[-]>[-]
+]<<
+
+subtract 3 more to check for u (total 117)
+---
 [>+>+<<-]>>[<<+>>-]<<
 >>+<[>-<[-]]
 >[

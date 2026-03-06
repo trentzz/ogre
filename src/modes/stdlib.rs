@@ -7,13 +7,15 @@ pub fn list_modules() {
     println!();
     for name in preprocess::stdlib_modules() {
         let desc = match *name {
-            "io" => "I/O utilities (print_newline, print_space, print_tab, print_bang, read_char, ...)",
-            "math" => "Arithmetic (zero, inc, dec, double, triple, multiply_by_10, divmod_10, copy_right, ...)",
-            "memory" => "Memory operations (clear, clear2-5, swap, copy_right, copy_left, dup, rotate3, ...)",
-            "ascii" => "ASCII utilities (print_A, print_B, to_upper, to_lower, is_digit, digit_to_char, ...)",
-            "debug" => "Debugging helpers (dump_cell, dump_and_newline, marker_start, marker_end)",
-            "string" => "String/text operations (skip_char, skip_spaces, skip_line, read_decimal)",
-            "logic" => "Boolean/conditional logic (not, bool, and, or, equal)",
+            "ascii" => "ASCII utilities (to_upper, to_lower, is_digit, is_alpha, is_upper, is_lower, ...)",
+            "cli" => "CLI toolkit (skip_dashes, read_flag_char, read_arg, match_char, print_error_prefix, ...)",
+            "convert" => "Data conversion (print_decimal, print_hex_digit, print_binary_8, atoi/itoa, ...)",
+            "debug" => "Debugging helpers (dump_cell, dump_decimal, dump_hex, dump_range_5, separator, ...)",
+            "io" => "I/O utilities (print_newline, print_space, read_char, print_char, flush_input, ...)",
+            "logic" => "Boolean/conditional logic (not, bool, and, or, xor, equal, greater_than, ...)",
+            "math" => "Arithmetic (zero, inc, dec, double, triple, multiply, square, modulo, clamp, ...)",
+            "memory" => "Memory ops (clear, swap, dup, copy_right, rotate3, reverse3, fill_5, ...)",
+            "string" => "String/text (skip_char, skip_spaces, read_decimal, read_line, print_string, ...)",
             _ => "",
         };
         println!("  std/{}.bf — {}", name, desc);

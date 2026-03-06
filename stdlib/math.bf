@@ -105,3 +105,62 @@
     [<<<+>>>-]<<<
     >[<+>-]<
 }
+
+@doc Square cell 0 (c0 = c0 * c0). Uses cells 1-4 as scratch.
+@fn square {
+    [>+>+<<-]>>[<<+>>-]<<
+    >[<[>>+>+<<<-]>>>[<<<+>>>-]<<-]
+    >[<+>-]<
+    >[-]>[-]<<
+}
+
+@doc Compute c0 mod c1, result in c0. Cell 1 zeroed. Uses cells 2-4 as scratch.
+@fn modulo {
+    [->-[>+>>]>[+[-<+>]>+>>]<<<<<]
+    >[-]>[<<+>>-]<<
+    >>[-]>[-]<<<
+}
+
+@doc Multiply c0 by c1, result in c0. Cell 1 zeroed. Uses cell 2 as scratch.
+@fn multiply {
+    >[<[>>+>+<<<-]>>>[<<<+>>>-]<<-]
+    >[<+>-]<
+    >[-]>[-]<<
+}
+
+@doc Set cell 0 to 1 if nonzero, 0 if zero (boolean cast / is_positive)
+@fn is_positive {
+    [[-]>+<]>[<+>-]<
+}
+
+@doc Clamp c0 between c1 (min) and c2 (max). Result in c0.
+@doc Uses cells 3-6 as scratch. c1 and c2 zeroed after.
+@fn clamp {
+    [>>>+<<<-]
+    >[>>>>+<<<<-]>
+    [>>>>>+<<<<<-]
+    <<<
+    >>>
+    [>+>+<<-]>>[<<+>>-]<
+    [<->-]<
+    [[-]
+        >>[-]<<
+        <<<[>>>+<<<-]>>>
+    ]
+    >
+    [<<<+>>>-]
+    <<<
+    >>>[-]<<<
+    >[>>>>+<<<<-]>>>>
+    [<+<+>>-]<<[>>+<<-]>
+    [<->-]<
+    [[-]
+        >>>[-]<<<
+        >>[<<<+>>>-]<<<
+    ]
+    >>
+    [<<<+>>>-]
+    <<<
+    >[-]>[-]>[-]>[-]>[-]>[-]<<<<<<<
+    >[<+>-]<
+}

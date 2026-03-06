@@ -26,7 +26,7 @@ pub fn trace_source(source: &str, tape_size: usize, every_n: usize) -> Result<()
         interp.step()?;
         step_count += 1;
 
-        if step_count % every as u64 == 0 {
+        if step_count.is_multiple_of(every as u64) {
             let dp = interp.data_pointer();
             let cell_val = interp.tape_value(dp);
             print_trace_line(step_count, &desc, dp, cell_val, interp.tape(), dp);
@@ -44,14 +44,14 @@ fn print_trace_line(step: u64, op: &str, dp: usize, cell_val: u8, tape: &[u8], c
 
     let mut cells = String::new();
     cells.push('[');
-    for i in start..end {
+    for (i, &val) in tape.iter().enumerate().take(end).skip(start) {
         if i > start {
             cells.push(' ');
         }
         if i == center {
-            cells.push_str(&format!("*{}", tape[i]));
+            cells.push_str(&format!("*{}", val));
         } else {
-            cells.push_str(&format!("{}", tape[i]));
+            cells.push_str(&format!("{}", val));
         }
     }
     cells.push(']');

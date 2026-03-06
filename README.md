@@ -100,20 +100,22 @@ ogre ships with a built-in standard library of reusable functions. Import module
 
 | Module | Description |
 |--------|-------------|
-| `std/io.bf` | I/O utilities: `print_newline`, `print_space`, `print_tab`, `read_char`, `print_char`, and 18 more character printers |
-| `std/math.bf` | Arithmetic: `zero`, `inc`, `dec`, `double`, `triple`, `multiply_by_10`, `copy_right`, `is_zero`, and more |
-| `std/memory.bf` | Memory ops: `clear`, `clear2`-`clear5`, `swap`, `dup`, `copy_right`, `copy_left`, `rotate3`, and more |
-| `std/ascii.bf` | ASCII utilities: `to_upper`, `to_lower`, `is_digit`, `is_space`, `digit_to_char`, `char_to_digit`, and character printers |
-| `std/string.bf` | String/text: `skip_char`, `skip_spaces`, `skip_line`, `read_decimal` |
-| `std/logic.bf` | Boolean logic: `not`, `bool`, `and`, `or`, `equal` |
-| `std/debug.bf` | Debugging: `dump_cell`, `dump_and_newline`, `marker_start`, `marker_end` |
+| `std/io.bf` | I/O utilities: `print_newline`, `print_space`, `read_char`, `print_char`, `flush_input`, and 25+ character printers |
+| `std/math.bf` | Arithmetic: `inc`, `dec`, `double`, `multiply`, `square`, `modulo`, `divmod_10`, `min`, `max`, `clamp`, and more |
+| `std/memory.bf` | Memory ops: `clear`, `swap`, `dup`, `copy_right`, `rotate3`, `reverse3`, `fill_5`, `shift_right_3`, and more |
+| `std/string.bf` | String/text: `read_line`, `read_word`, `read_decimal`, `print_string`, `compare_char`, `skip_spaces`, `skip_line` |
+| `std/logic.bf` | Boolean logic: `not`, `and`, `or`, `xor`, `nand`, `equal`, `greater_than`, `less_than`, `if_nonzero` |
+| `std/ascii.bf` | ASCII utilities: `to_upper`, `to_lower`, `is_digit`, `is_alpha`, `is_upper`, `is_lower`, `is_printable` |
+| `std/debug.bf` | Debugging: `dump_decimal`, `dump_hex`, `dump_range_5`, `separator`, `marker_start`, `marker_end` |
+| `std/cli.bf` | CLI toolkit: `skip_dashes`, `read_flag_char`, `read_arg`, `match_char`, `print_error_prefix` |
+| `std/convert.bf` | Format conversion: `print_decimal`, `print_hex_digit`, `print_binary_8`, `atoi_single`, `itoa_single` |
 
 ```sh
 ogre stdlib list          # List all modules
 ogre stdlib show io       # View a module's source
 ```
 
-See [docs/stdlib-reference.md](docs/stdlib-reference.md) for complete documentation.
+See [stdlibdocs/](stdlibdocs/) for per-function documentation, or [docs/stdlib-reference.md](docs/stdlib-reference.md) for an overview.
 
 ---
 
@@ -231,8 +233,7 @@ The `examples/` directory contains complete ogre projects:
 | `fibonacci/` | Fibonacci number printer |
 | `multifile/` | Multi-file project with `@import` |
 | `stdlib-demo/` | Standard library usage demo |
-| `convert/` | CLI tool with argument parsing (`--upper`, `--lower`, `--ascii-to-decimal`, `--decimal-to-ascii`) |
-| `stdlib-tests/` | Comprehensive test suite for all stdlib functions |
+| `convert/` | CLI tool with argument parsing (`--upper`, `--lower`, `--reverse`, `--ascii-to-decimal`, `--decimal-to-ascii`) |
 
 Run any example:
 
@@ -253,8 +254,10 @@ cargo build --release
 # Binary is at target/release/ogre
 ```
 
-Run the test suite:
+Run the test suites:
 
 ```sh
-cargo test
+cargo test                          # Rust unit tests
+cd stdlibtests && ogre test         # Standard library tests (105 tests)
+cd examples/convert && ogre test    # Convert example tests
 ```

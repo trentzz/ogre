@@ -1,0 +1,56 @@
+[
+  {
+    "name": "clear5 zeros five cells",
+    "brainfuck": "src/test_mem_clear.bf",
+    "input": "",
+    "output": "00000"
+  },
+  {
+    "name": "swap exchanges cells",
+    "brainfuck": "src/test_mem_swap.bf",
+    "input": "",
+    "output": "73"
+  },
+  {
+    "name": "dup duplicates cell",
+    "brainfuck": "src/test_mem_dup.bf",
+    "input": "",
+    "output": "55"
+  },
+  {
+    "name": "push_right moves and advances",
+    "brainfuck": "src/test_mem_pushpull.bf",
+    "input": "",
+    "output": "40"
+  },
+  {
+    "name": "clear_range_10 zeros ten cells",
+    "brainfuck": "src/test_mem_clearrange.bf",
+    "input": "",
+    "output": "000"
+  },
+  {
+    "name": "swap_nonadj swaps cell 0 and cell 2",
+    "brainfuck": "src/test_mem_swapnonadj.bf",
+    "input": "",
+    "output": "73"
+  },
+  {
+    "name": "reverse3 reverses three cells",
+    "brainfuck": "src/test_mem_reverse3.bf",
+    "input": "",
+    "output": "321"
+  },
+  {
+    "name": "fill_5 fills five cells with same value",
+    "brainfuck": "src/test_mem_fill5.bf",
+    "input": "",
+    "output": "55555"
+  },
+  {
+    "name": "shift_right_3 shifts three cells right",
+    "brainfuck": "src/test_mem_shiftright3.bf",
+    "input": "",
+    "output": "012"
+  }
+]

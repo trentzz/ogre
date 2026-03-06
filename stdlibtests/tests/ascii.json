@@ -1,0 +1,68 @@
+[
+  {
+    "name": "print_A print_B print_exclaim print_dash print_colon",
+    "brainfuck": "src/test_ascii_print.bf",
+    "input": "",
+    "output": "AB!-:"
+  },
+  {
+    "name": "to_upper converts lowercase",
+    "brainfuck": "src/test_ascii_toupper.bf",
+    "input": "",
+    "output": "A"
+  },
+  {
+    "name": "to_lower converts uppercase",
+    "brainfuck": "src/test_ascii_tolower.bf",
+    "input": "",
+    "output": "a"
+  },
+  {
+    "name": "digit_to_char and char_to_digit",
+    "brainfuck": "src/test_ascii_digitchar.bf",
+    "input": "",
+    "output": "73"
+  },
+  {
+    "name": "is_upper detects uppercase letters",
+    "brainfuck": "src/test_ascii_isupper.bf",
+    "input": "",
+    "output": "10"
+  },
+  {
+    "name": "is_lower detects lowercase letters",
+    "brainfuck": "src/test_ascii_islower.bf",
+    "input": "",
+    "output": "10"
+  },
+  {
+    "name": "is_newline detects newline character",
+    "brainfuck": "src/test_ascii_isnewline.bf",
+    "input": "",
+    "output": "10"
+  },
+  {
+    "name": "is_printable detects printable ASCII",
+    "brainfuck": "src/test_ascii_isprintable.bf",
+    "input": "",
+    "output": "10"
+  },
+  {
+    "name": "print_digit prints single digit",
+    "brainfuck": "src/test_ascii_printdigit.bf",
+    "input": "",
+    "output": "7"
+  },
+  {
+    "name": "is_digit detects digit vs non-digit",
+    "brainfuck": "src/test_ascii_isdigit.bf",
+    "input": "",
+    "output": "10"
+  },
+  {
+    "name": "is_alpha detects letters vs non-letters",
+    "brainfuck": "src/test_ascii_isalpha.bf",
+    "input": "",
+    "output": "110"
+  }
+]

@@ -24,6 +24,30 @@
     "output": "a"
   },
   {
+    "name": "reverse swaps case of mixed input",
+    "brainfuck": "src/main.bf",
+    "input": "--reverse Hello\n",
+    "output": "hELLO"
+  },
+  {
+    "name": "reverse all uppercase to lowercase",
+    "brainfuck": "src/main.bf",
+    "input": "--reverse ABC\n",
+    "output": "abc"
+  },
+  {
+    "name": "reverse all lowercase to uppercase",
+    "brainfuck": "src/main.bf",
+    "input": "--reverse xyz\n",
+    "output": "XYZ"
+  },
+  {
+    "name": "reverse preserves non-letters",
+    "brainfuck": "src/main.bf",
+    "input": "--reverse A1b\n",
+    "output": "a1B"
+  },
+  {
     "name": "ascii-to-decimal single char",
     "brainfuck": "src/main.bf",
     "input": "--ascii-to-decimal A\n",

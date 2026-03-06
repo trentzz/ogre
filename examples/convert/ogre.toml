@@ -1,7 +1,7 @@
 [project]
 name = "convert"
 version = "0.1.0"
-description = "A brainfuck text conversion tool supporting --upper, --lower, --ascii-to-decimal, --decimal-to-ascii"
+description = "A brainfuck text conversion tool supporting --upper, --lower, --reverse, --ascii-to-decimal, --decimal-to-ascii"
 entry = "src/main.bf"
 
 [build]

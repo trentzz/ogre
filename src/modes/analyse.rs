@@ -142,9 +142,7 @@ fn compute_max_loop_depth(code: &str) -> usize {
                 }
             }
             ']' => {
-                if depth > 0 {
-                    depth -= 1;
-                }
+                depth = depth.saturating_sub(1);
             }
             _ => {}
         }

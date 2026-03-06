@@ -1,0 +1,50 @@
+[
+  {
+    "name": "skip_char skips one character",
+    "brainfuck": "src/test_string_skip.bf",
+    "input": "AB",
+    "output": "B"
+  },
+  {
+    "name": "print_string prints null-terminated string",
+    "brainfuck": "src/test_string_printstring.bf",
+    "input": "",
+    "output": "Hi"
+  },
+  {
+    "name": "skip_spaces skips leading spaces",
+    "brainfuck": "src/test_string_skipspaces.bf",
+    "input": "   X",
+    "output": "X"
+  },
+  {
+    "name": "skip_line skips to next line",
+    "brainfuck": "src/test_string_skipline.bf",
+    "input": "abc\nX",
+    "output": "X"
+  },
+  {
+    "name": "compare_char matches equal character",
+    "brainfuck": "src/test_string_comparematch.bf",
+    "input": "A",
+    "output": "1"
+  },
+  {
+    "name": "compare_char detects mismatched character",
+    "brainfuck": "src/test_string_comparemiss.bf",
+    "input": "B",
+    "output": "0"
+  },
+  {
+    "name": "read_line reads until newline",
+    "brainfuck": "src/test_string_readline.bf",
+    "input": "Hello\n",
+    "output": "Hello"
+  },
+  {
+    "name": "read_word reads until space",
+    "brainfuck": "src/test_string_readword.bf",
+    "input": "Hello World",
+    "output": "Hello"
+  }
+]

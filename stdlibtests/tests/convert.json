@@ -1,0 +1,104 @@
+[
+  {
+    "name": "atoi_single converts ASCII digit to number",
+    "brainfuck": "src/test_convert_atoi.bf",
+    "input": "",
+    "output": "7"
+  },
+  {
+    "name": "itoa_single converts number to ASCII digit",
+    "brainfuck": "src/test_convert_itoa.bf",
+    "input": "",
+    "output": "7"
+  },
+  {
+    "name": "print_decimal prints 0",
+    "brainfuck": "src/test_convert_printdec_0.bf",
+    "input": "",
+    "output": "0"
+  },
+  {
+    "name": "print_decimal prints single digit 5",
+    "brainfuck": "src/test_convert_printdec_5.bf",
+    "input": "",
+    "output": "5"
+  },
+  {
+    "name": "print_decimal prints two digit 42",
+    "brainfuck": "src/test_convert_printdec_42.bf",
+    "input": "",
+    "output": "42"
+  },
+  {
+    "name": "print_decimal prints three digit 100",
+    "brainfuck": "src/test_convert_printdec_100.bf",
+    "input": "",
+    "output": "100"
+  },
+  {
+    "name": "print_decimal prints 255",
+    "brainfuck": "src/test_convert_printdec_255.bf",
+    "input": "",
+    "output": "255"
+  },
+  {
+    "name": "print_decimal_padded pads 0 as 000",
+    "brainfuck": "src/test_convert_printdecpad_0.bf",
+    "input": "",
+    "output": "000"
+  },
+  {
+    "name": "print_decimal_padded pads 42 as 042",
+    "brainfuck": "src/test_convert_printdecpad_42.bf",
+    "input": "",
+    "output": "042"
+  },
+  {
+    "name": "print_decimal_padded prints 255",
+    "brainfuck": "src/test_convert_printdecpad_255.bf",
+    "input": "",
+    "output": "255"
+  },
+  {
+    "name": "print_hex_digit prints 0",
+    "brainfuck": "src/test_convert_hexdigit_0.bf",
+    "input": "",
+    "output": "0"
+  },
+  {
+    "name": "print_hex_digit prints 9",
+    "brainfuck": "src/test_convert_hexdigit_9.bf",
+    "input": "",
+    "output": "9"
+  },
+  {
+    "name": "print_hex_digit prints A for 10",
+    "brainfuck": "src/test_convert_hexdigit_a.bf",
+    "input": "",
+    "output": "A"
+  },
+  {
+    "name": "print_hex_digit prints F for 15",
+    "brainfuck": "src/test_convert_hexdigit_f.bf",
+    "input": "",
+    "output": "F"
+  },
+  {
+    "name": "print_binary_8 prints 00000000 for 0",
+    "brainfuck": "src/test_convert_binary_0.bf",
+    "input": "",
+    "output": "00000000"
+  },
+  {
+    "name": "print_binary_8 prints 00101010 for 42",
+    "brainfuck": "src/test_convert_binary_42.bf",
+    "input": "",
+    "output": "00101010"
+  },
+  {
+    "name": "print_binary_8 prints 11111111 for 255",
+    "brainfuck": "src/test_convert_binary_255.bf",
+    "input": "",
+    "output": "11111111"
+  }
+]

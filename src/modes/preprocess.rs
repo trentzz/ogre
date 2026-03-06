@@ -110,6 +110,8 @@ const STDLIB_ASCII: &str = include_str!("../../stdlib/ascii.bf");
 const STDLIB_DEBUG: &str = include_str!("../../stdlib/debug.bf");
 const STDLIB_STRING: &str = include_str!("../../stdlib/string.bf");
 const STDLIB_LOGIC: &str = include_str!("../../stdlib/logic.bf");
+const STDLIB_CLI: &str = include_str!("../../stdlib/cli.bf");
+const STDLIB_CONVERT: &str = include_str!("../../stdlib/convert.bf");
 
 /// Get the source code for a standard library module by name.
 pub fn get_stdlib_module(name: &str) -> Option<&'static str> {
@@ -121,13 +123,17 @@ pub fn get_stdlib_module(name: &str) -> Option<&'static str> {
         "debug" => Some(STDLIB_DEBUG),
         "string" => Some(STDLIB_STRING),
         "logic" => Some(STDLIB_LOGIC),
+        "cli" => Some(STDLIB_CLI),
+        "convert" => Some(STDLIB_CONVERT),
         _ => None,
     }
 }
 
 /// List all available standard library module names.
 pub fn stdlib_modules() -> &'static [&'static str] {
-    &["ascii", "debug", "io", "logic", "math", "memory", "string"]
+    &[
+        "ascii", "cli", "convert", "debug", "io", "logic", "math", "memory", "string",
+    ]
 }
 
 /// Result type for preprocessing with documentation: (expanded_code, functions, fn_docs).
