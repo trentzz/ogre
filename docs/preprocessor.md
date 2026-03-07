@@ -13,6 +13,11 @@ into pure brainfuck by resolving macros and imports at compile time.
 | `@const` | `@const NAME value` | Define a named numeric constant |
 | `@use` | `@use NAME` | Expand a constant to N `+` characters |
 | `@doc` | `@doc description text` | Attach documentation to the next `@fn` |
+| `@define` | `@define SYMBOL` | Define a symbol for conditional compilation |
+| `@ifdef` | `@ifdef SYMBOL` ... `@endif` | Include code if symbol is defined |
+| `@ifndef` | `@ifndef SYMBOL` ... `@endif` | Include code if symbol is not defined |
+| `@if` | `@if CONST` ... `@else` ... `@endif` | Include code if constant is non-zero |
+| `@repeat` | `@repeat N { body }` | Repeat body N times at compile time |
 
 ## Two-Pass Architecture
 
@@ -43,6 +48,26 @@ The collect pass walks the source character by character, handling directives:
 
 7. **`@doc text`** — Accumulates doc lines. When the next `@fn` is
    encountered, the accumulated doc is attached to the function.
+
+8. **`@define SYMBOL`** — Adds the symbol to `defines: HashSet<String>`.
+   Symbols defined with `@define` or `@const` can be tested with `@ifdef`.
+
+9. **`@ifdef SYMBOL` ... `@else` ... `@endif`** — Conditional compilation.
+   If the symbol is defined (via `@define` or `@const`), the true branch is
+   included; otherwise the false branch (after `@else`, if present) is
+   included. Supports nesting.
+
+10. **`@ifndef SYMBOL` ... `@else` ... `@endif`** — Inverse of `@ifdef`.
+    Includes the true branch when the symbol is NOT defined.
+
+11. **`@if CONST` ... `@else` ... `@endif`** — Value-based conditional.
+    If the constant (defined via `@const`) has a non-zero value, includes
+    the true branch; otherwise includes the false branch. Undefined
+    constants are treated as zero.
+
+12. **`@repeat N { body }`** — Repeats the body N times. The body is
+    recursively processed, so it can contain `@call`, `@use`, and other
+    directives. N must be a non-negative integer.
 
 All non-directive characters are appended to the top-level output string.
 
@@ -76,7 +101,7 @@ with a fallback to the raw path if canonicalization fails.
 ```
 
 The `std/` prefix triggers resolution from embedded source code. Available
-modules: io, math, memory, ascii, debug.
+modules: ascii, cli, convert, debug, io, logic, math, memory, string.
 
 ## Error Handling
 
@@ -119,3 +144,49 @@ After Pass 2 (expanded):
 
 The `@use NEWLINE` inside the `@fn` body is expanded during Pass 2 when
 `print_nl` is inlined.
+
+## Conditional Compilation Example
+
+```brainfuck
+@define DEBUG
+@const MODE 1
+
+@ifdef DEBUG
+  @call dump_cell        (only included when DEBUG is defined)
+@endif
+
+@ifndef RELEASE
+  @call marker_start     (included when RELEASE is NOT defined)
+@endif
+
+@if MODE
+  +++                    (included because MODE is 1, non-zero)
+@else
+  ---                    (skipped)
+@endif
+```
+
+Conditionals support nesting:
+
+```brainfuck
+@define A
+@define B
+@ifdef A
+  @ifdef B
+    +++                  (both A and B defined, this is included)
+  @endif
+@endif
+```
+
+## Repeat Example
+
+```brainfuck
+@repeat 5 { >+ }
+This expands to: >+>+>+>+>+
+
+@fn inc { + }
+@repeat 3 { @call inc }
+This expands to: +++
+```
+
+The body can contain any directives, including nested `@repeat` blocks.

@@ -417,3 +417,132 @@ across all 26 sections is now complete.
 
 **Tests added:** 1 interpreter unit test, 2 test runner unit tests,
 3 CLI integration tests. Total: 322 tests passing.
+
+---
+
+## Advanced IR Optimizations
+
+**Files changed:** `src/modes/ir.rs`, `src/modes/interpreter.rs`,
+`src/modes/compile.rs`, `src/modes/compile_wasm.rs`
+
+**What changed:**
+- Added 4 new `Op` variants: `Set(u8)`, `ScanRight`, `ScanLeft`,
+  `MultiplyMove(Vec<(isize, u8)>)`
+- Added 3 new optimization passes: `optimize_scan_idiom()`,
+  `optimize_multiply_move()`, `optimize_set_idiom()`
+- Removed `optimize_dead_store()` (subsumed by `optimize_set_idiom`)
+- Updated interpreter with execution handlers for all new ops
+- Updated C and WASM code generators for all new ops
+- Reordered optimization passes: clear → move → scan → multiply_move →
+  cancellation → set_idiom → reindex_jumps
+
+**Why:** These optimizations target common brainfuck patterns. Scan loops
+(`[>]`/`[<]`) are O(n) pointer scans. Multiply-move patterns distribute
+values without loops. Set idiom folds `[-]+++` into a single assignment.
+
+**Tests added:** 9 unit tests for new ops and optimizations. Total: 389 tests.
+
+---
+
+## Conditional Compilation Directives
+
+**Files changed:** `src/modes/preprocess.rs`
+
+**What changed:**
+- Added `defines: HashSet<String>` field to Preprocessor
+- `@define SYMBOL` adds symbols for conditional compilation
+- `@ifdef SYMBOL` ... `@else` ... `@endif` conditional blocks
+- `@ifndef SYMBOL` ... `@else` ... `@endif` inverse conditionals
+- `@if CONST` ... `@else` ... `@endif` value-based conditionals
+- `@repeat N { body }` compile-time repetition
+- `read_conditional_branches()` parser with nesting support (depth tracking)
+- All directives work in both `collect()` and `collect_with_tracking()` passes
+- `@const`-defined names count as defined for `@ifdef`
+
+**Why:** Conditional compilation enables platform-specific code, debug/release
+builds, and feature flags. `@repeat` eliminates manual copy-paste for repeated
+patterns.
+
+**Tests added:** 19 unit tests covering all directive combinations, nesting,
+error cases, and integration with `@const`.
+
+---
+
+## New CLI Commands: minify, clean, explain, completions
+
+**Files changed:** `src/modes/minify.rs` (new), `src/modes/clean.rs` (new),
+`src/modes/explain.rs` (new), `src/modes/mod.rs`, `src/main.rs`, `Cargo.toml`
+
+**What changed:**
+- `ogre minify` strips non-BF characters from source files, with optional
+  preprocessing and file output
+- `ogre clean` removes build artifacts (`.o`, `.c`, `.wat`, `.wasm`), cache
+  dirs, and output dirs; preserves source files in `src/`/`lib/`
+- `ogre explain` analyzes programs and produces plain English descriptions:
+  program classification, pattern detection, optimization stats, and actual
+  output for small programs
+- `ogre completions <shell>` generates shell completion scripts using
+  `clap_complete` for bash, zsh, fish, elvish, and powershell
+- Added `clap_complete = "4"` dependency
+
+**Why:** These commands round out the toolchain: `minify` for sharing programs,
+`clean` for build hygiene, `explain` for understanding unfamiliar code, and
+`completions` for shell productivity.
+
+**Tests added:** 18 unit tests (6 minify, 4 clean, 8 explain).
+
+---
+
+## Test Runner Enhancements
+
+**Files changed:** `src/modes/test_runner.rs`, `src/main.rs`
+
+**What changed:**
+- `TestOptions` struct with `filter`, `junit_output`, `parallel` fields
+- `--filter <pattern>` flag for substring-based test name filtering
+- `--junit <file>` flag for JUnit XML output (CI integration)
+- `--parallel` flag for concurrent test execution using `std::thread`
+- `TestResult` struct for individual test outcomes with timing
+- `run_single_test()` for standalone test execution
+- `write_junit_xml()` for JUnit XML serialization with proper XML escaping
+- Parallel execution uses `Arc<Mutex<Vec<TestResult>>>` for thread-safe
+  result collection
+
+**Why:** Test filtering enables running subsets of tests during development.
+JUnit XML integrates with CI systems (Jenkins, GitHub Actions). Parallel
+execution speeds up large test suites.
+
+---
+
+## Debugger Enhancements
+
+**Files changed:** `src/modes/debug.rs`
+
+**What changed:**
+- Conditional breakpoints: `cbreak <op> <cell> <cond> <val>` with conditions
+  `eq`, `ne`, `gt`, `lt`; `cbreak list`; `cbreak delete <n>`
+- Watchpoints: `watch <cell>` triggers when cell value changes during
+  `continue`; `watch list` shows current/last values; `watch delete <n>`
+- `BreakCondition` enum with `matches()` method for condition evaluation
+- `Watchpoint` struct tracks cell index and last known value
+- `do_continue()` updated to check conditional breakpoints before execution
+  and watchpoints after each step
+
+**Why:** Conditional breakpoints prevent unnecessary pausing when debugging
+specific conditions. Watchpoints enable "break when this cell changes"
+workflows, essential for tracking down data corruption or unexpected mutations.
+
+---
+
+## Configurable WASM Tape Size
+
+**Files changed:** `src/main.rs`, `src/modes/compile_wasm.rs`
+
+**What changed:**
+- Added `--tape-size <n>` flag to `CompileArgs` (used when `--target wasm`)
+- WASM compilation now respects custom tape sizes for linear memory allocation
+- Memory page calculation adjusted for arbitrary tape sizes
+
+**Why:** The default 30,000-cell tape may be insufficient for complex programs
+or excessive for small ones. Configurable tape size gives users control over
+WASM memory usage.

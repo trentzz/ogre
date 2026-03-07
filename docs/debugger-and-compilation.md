@@ -183,6 +183,62 @@ output falls back to just the op index:
   ip=10 (no source map)
 ```
 
+#### cbreak \<op\> \<cell\> \<cond\> \<val\>
+
+Set a conditional breakpoint that triggers only when a specific cell meets a
+condition. The debugger pauses at the given op index only if the condition is
+true at that moment.
+
+Available conditions:
+- `eq` -- cell value equals val
+- `ne` -- cell value does not equal val
+- `gt` -- cell value is greater than val
+- `lt` -- cell value is less than val
+
+```
+(ogre-dbg) cbreak 10 0 eq 72
+Conditional breakpoint #0 set at op 10 when cell[0] == 72
+
+(ogre-dbg) cbreak 5 1 gt 0
+Conditional breakpoint #1 set at op 5 when cell[1] > 0
+
+(ogre-dbg) cbreak list
+  #0: op 10 when cell[0] == 72
+  #1: op 5 when cell[1] > 0
+
+(ogre-dbg) cbreak delete 0
+Conditional breakpoint #0 removed.
+```
+
+Conditional breakpoints are checked during `continue`. If the instruction
+pointer reaches the op index and the condition evaluates to true, execution
+pauses.
+
+#### watch \<cell\>
+
+Set a watchpoint on a tape cell. The debugger pauses whenever the cell's value
+changes during execution with `continue`.
+
+```
+(ogre-dbg) watch 0
+Watchpoint #0 on cell[0] (current value: 0)
+
+(ogre-dbg) continue
+Watchpoint triggered cell[0] changed: 0 → 3
+  ip=1  op=Right(1)  dp=0  val=3
+  tape: [ >0:3<  1:0  2:0 ]
+
+(ogre-dbg) watch list
+  #0: cell[0] last=3 current=3
+
+(ogre-dbg) watch delete 0
+Watchpoint #0 removed.
+```
+
+Watchpoints track the last known value and trigger when the current value
+differs after any instruction is executed. Multiple watchpoints can be active
+simultaneously.
+
 #### exit / quit / q
 
 Quit the debugger immediately.
@@ -302,6 +358,10 @@ IR operations map directly to C constructs:
 | `JumpIfNonZero` | `}` |
 | `Clear` | `*ptr = 0;` |
 | `MoveAdd(offset)` | `*(ptr + offset) += *ptr; *ptr = 0;` |
+| `Set(n)` | `*ptr = n;` |
+| `ScanRight` | `while (*ptr) ptr++;` |
+| `ScanLeft` | `while (*ptr) ptr--;` |
+| `MultiplyMove(targets)` | Multi-target distribution loop |
 
 ogre tries `cc`, `gcc`, and `clang` in that order and uses the first one it
 finds. If none is available, it reports an error.
@@ -454,14 +514,42 @@ Right(2), Right(3)  ->  Right(5)
 
 This runs iteratively until no more changes are found.
 
-#### Dead Store Elimination
+#### Scan Idiom
 
-A `Clear` immediately followed by `Add(n)` is redundant -- the `Clear` is
-removed because the `Add` will set the cell value regardless:
+The patterns `[>]` (scan right) and `[<]` (scan left) are recognized and
+replaced with `ScanRight` / `ScanLeft` ops. These move the pointer until a
+zero cell is found, without looping through individual increment/decrement
+steps.
 
 ```
-Clear, Add(3)  ->  Add(3)
+JumpIfZero, Right(1), JumpIfNonZero  ->  ScanRight
+JumpIfZero, Left(1), JumpIfNonZero   ->  ScanLeft
 ```
+
+In generated C, this becomes `while (*ptr) ptr++;` or `while (*ptr) ptr--;`.
+
+#### Multiply-Move
+
+Complex loop patterns that distribute the current cell's value to multiple
+targets with multiplication factors are detected:
+
+```
+[->>+++>++<<<]  ->  MultiplyMove(vec![(2, 3), (3, 2)])
+```
+
+This adds `current * 3` to cell+2, `current * 2` to cell+3, and zeros the
+current cell -- all without a loop.
+
+#### Set Idiom
+
+A `Clear` (or `Set(0)`) followed immediately by `Add(n)` is folded into a
+single `Set(n)`:
+
+```
+Clear, Add(3)  ->  Set(3)
+```
+
+Standalone `Clear` ops are also converted to `Set(0)` for consistency.
 
 #### Jump Reindexing
 

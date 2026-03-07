@@ -2,12 +2,12 @@
 
 ## Test Organization
 
-ogre has 228+ tests across multiple levels:
+ogre has 389+ tests across multiple levels:
 
 | Category | Count | Location |
 |----------|-------|----------|
-| Unit tests (ir, interpreter, preprocess, etc.) | ~160 | `src/modes/*.rs` |
-| CLI integration tests | 32 | `tests/cli_integration.rs` |
+| Unit tests (ir, interpreter, preprocess, etc.) | ~290 | `src/modes/*.rs` |
+| CLI integration tests | 63 | `tests/cli_integration.rs` |
 | Preprocessor integration | 11 | `tests/preprocess_integration.rs` |
 | Code generation integration | 10 | `tests/generate_integration.rs` |
 | Interpreter integration | 8 | `tests/interpreter_integration.rs` |
@@ -34,11 +34,12 @@ cargo test -- --nocapture
 
 ## Unit Test Coverage by Module
 
-### ir.rs (21 tests)
+### ir.rs (30 tests)
 - Parsing: empty source, comments stripped, run-length collapsing
 - Bracket pairing: simple, nested, unmatched open/close
-- Optimization: clear idiom, cancellation (add/sub, moves), dead store
-- Back-conversion: to_bf_string roundtrip
+- Optimization: clear idiom, scan idiom, set idiom, multiply-move, cancellation (add/sub, moves)
+- New ops: Set, ScanRight, ScanLeft, MultiplyMove
+- Back-conversion: to_bf_string roundtrip for all op types
 
 ### interpreter.rs (19 tests)
 - Basic operations: increment, decrement, move, I/O
@@ -46,12 +47,16 @@ cargo test -- --nocapture
 - Edge cases: wrapping arithmetic (255+1=0), cell initialization
 - Features: instruction count, cells touched, run with limit
 
-### preprocess.rs (22 tests)
+### preprocess.rs (41 tests)
 - Functions: define, call, nested calls, empty body
 - Cycles: direct, self-referential
 - Imports: file-based, standard library, double import
 - Constants: basic, zero, large, inside @fn, undefined, missing value
-- Error cases: unknown directive, missing brace, nonexistent import
+- Conditional compilation: @define, @ifdef true/false, @ifndef, @ifdef with @else, @ifdef with @const
+- Value conditionals: @if nonzero/zero, @if undefined, @if with @else
+- Repeat: basic, zero, with BF code, nested directives, missing brace error
+- Nested conditionals: double @ifdef nesting, inner false branch
+- Error cases: unknown directive, missing brace, nonexistent import, missing @endif
 
 ### format.rs (12 tests)
 - Formatting: basic BF, loop indentation, nested loops
@@ -75,10 +80,23 @@ cargo test -- --nocapture
 - Structure: includes, main function, return
 - Features: collapsed ops, clear idiom, custom tape size, nested indentation
 
-### test_runner.rs (5 tests)
+### test_runner.rs (7 tests)
 - Inline test cases: pass, fail, with input
 - Error handling: invalid BF
-- Features: instruction limit timeout, regex matching
+- Features: instruction limit timeout, regex matching, regex mismatch, output/regex conflict
+
+### minify.rs (6 tests)
+- Empty input, preserves BF operators, strips whitespace
+- Strips comments, strips @directives, preserves complex programs
+
+### clean.rs (4 tests)
+- Empty directory, removes artifacts (.o, .wat), preserves source files
+- Removes cache directory
+
+### explain.rs (8 tests)
+- Empty program, cat program detection, hello world detection
+- Clear idiom detection, I/O classification, no-I/O programs
+- Move pattern detection, optimization statistics
 
 ### bench.rs (4 tests)
 - Number formatting helper
@@ -100,7 +118,7 @@ cargo test -- --nocapture
 - String: ASCII characters, non-ASCII error
 - Loop: correct iteration count, zero iterations
 
-## CLI Integration Tests (32 tests)
+## CLI Integration Tests (63 tests)
 
 Tests use `assert_cmd` for process invocation and `predicates` for output
 assertions. `tempfile` provides isolated temporary directories.

@@ -88,6 +88,11 @@ Brainfunct extends brainfuck with compile-time macros handled by the preprocesso
 | `@const NAME value` | Define a numeric constant |
 | `@use NAME` | Expand a constant to N `+` characters |
 | `@doc text` | Docstring above `@fn`, shown by `ogre doc` |
+| `@define SYMBOL` | Define a symbol for conditional compilation |
+| `@ifdef SYMBOL` ... `@endif` | Include code only if symbol is defined |
+| `@ifndef SYMBOL` ... `@endif` | Include code only if symbol is not defined |
+| `@if CONST` ... `@else` ... `@endif` | Include code if constant is non-zero |
+| `@repeat N { body }` | Repeat body N times at compile time |
 
 Top-level code in imported files is discarded (only `@fn` definitions are kept).
 Cycle detection prevents `A->B->A` or `A->A` recursion.
@@ -170,7 +175,7 @@ When a file argument is omitted from any command, ogre walks the CWD upward look
 
 | Command | Description |
 |---------|-------------|
-| `ogre test [test-file.json]` | Run structured JSON test suites |
+| `ogre test [test-file.json] [--filter] [--junit] [--parallel]` | Run structured JSON test suites |
 | `ogre bench [file]` | Count instructions executed and report wall time |
 | `ogre trace [file]` | Print tape state after every instruction |
 
@@ -182,6 +187,10 @@ When a file argument is omitted from any command, ogre walks the CWD upward look
 | `ogre init` | Initialize `ogre.toml` in the current directory |
 | `ogre pack [file]` | Output fully preprocessed pure brainfuck |
 | `ogre doc [file] [--stdlib]` | Generate documentation for functions |
+| `ogre clean` | Remove build artifacts (`.o`, `.c`, `.wat`, `.wasm`) |
+| `ogre minify [file]` | Strip all non-BF characters from source |
+| `ogre explain [file]` | Analyze and explain what a BF program does |
+| `ogre completions <shell>` | Generate shell completions (bash/zsh/fish/etc.) |
 
 ### Code Generation & Stdlib
 
