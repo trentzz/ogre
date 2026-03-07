@@ -8,9 +8,54 @@ use super::interpreter::Interpreter;
 use super::preprocess::Preprocessor;
 use super::source_map::{build_op_to_char_map, SourceMap};
 
+/// A conditional breakpoint: breaks when a condition on a cell is met.
+#[derive(Debug, Clone)]
+struct ConditionalBreakpoint {
+    op_index: usize,
+    cell: usize,
+    condition: BreakCondition,
+}
+
+#[derive(Debug, Clone)]
+enum BreakCondition {
+    Equals(u8),
+    NotEquals(u8),
+    GreaterThan(u8),
+    LessThan(u8),
+}
+
+impl BreakCondition {
+    fn matches(&self, value: u8) -> bool {
+        match self {
+            BreakCondition::Equals(v) => value == *v,
+            BreakCondition::NotEquals(v) => value != *v,
+            BreakCondition::GreaterThan(v) => value > *v,
+            BreakCondition::LessThan(v) => value < *v,
+        }
+    }
+
+    fn display(&self) -> String {
+        match self {
+            BreakCondition::Equals(v) => format!("== {}", v),
+            BreakCondition::NotEquals(v) => format!("!= {}", v),
+            BreakCondition::GreaterThan(v) => format!("> {}", v),
+            BreakCondition::LessThan(v) => format!("< {}", v),
+        }
+    }
+}
+
+/// A watchpoint: breaks when a cell's value changes.
+#[derive(Debug, Clone)]
+struct Watchpoint {
+    cell: usize,
+    last_value: u8,
+}
+
 pub struct Debugger {
     interp: Interpreter,
     breakpoints: HashSet<usize>,
+    conditional_breakpoints: Vec<ConditionalBreakpoint>,
+    watchpoints: Vec<Watchpoint>,
     /// Optional source map for showing original file/line/function context.
     source_map: Option<SourceMap>,
     /// Maps IR op indices to character positions in expanded source (for source map lookup).
@@ -23,6 +68,8 @@ impl Debugger {
         Ok(Self {
             interp: Interpreter::with_live_stdin(source)?,
             breakpoints: HashSet::new(),
+            conditional_breakpoints: Vec::new(),
+            watchpoints: Vec::new(),
             source_map: None,
             op_to_char,
         })
@@ -33,6 +80,8 @@ impl Debugger {
         Ok(Self {
             interp: Interpreter::with_live_stdin_and_tape_size(source, tape_size)?,
             breakpoints: HashSet::new(),
+            conditional_breakpoints: Vec::new(),
+            watchpoints: Vec::new(),
             source_map: None,
             op_to_char,
         })
@@ -47,6 +96,8 @@ impl Debugger {
         Ok(Self {
             interp: Interpreter::with_live_stdin_and_tape_size(source, tape_size)?,
             breakpoints: HashSet::new(),
+            conditional_breakpoints: Vec::new(),
+            watchpoints: Vec::new(),
             source_map: Some(source_map),
             op_to_char,
         })
@@ -142,17 +193,24 @@ impl Debugger {
                 }
                 ["help"] => {
                     println!("Commands:");
-                    println!("  step [n]              Execute 1 or n instructions");
-                    println!("  continue / c          Run until breakpoint or end");
-                    println!("  breakpoint <n>        Set breakpoint at op index n");
-                    println!("  breakpoint list       List all breakpoints");
-                    println!("  breakpoint delete <n> Remove breakpoint n");
-                    println!("  jump <n>              Move code pointer to n (no execution)");
-                    println!("  peek [n]              Show memory around ptr (or cell n)");
-                    println!("  show instruction [n]  Show current (or nth) instruction");
-                    println!("  show memory           Dump memory cells");
-                    println!("  where                 Show current source location");
-                    println!("  exit / quit / q       Quit debugger");
+                    println!("  step [n]                     Execute 1 or n instructions");
+                    println!("  continue / c                 Run until breakpoint or end");
+                    println!("  breakpoint <n>               Set breakpoint at op index n");
+                    println!("  breakpoint list              List all breakpoints");
+                    println!("  breakpoint delete <n>        Remove breakpoint n");
+                    println!("  cbreak <op> <cell> <cond> <val>  Conditional breakpoint");
+                    println!("    conditions: eq, ne, gt, lt");
+                    println!("  cbreak list                  List conditional breakpoints");
+                    println!("  cbreak delete <n>            Remove conditional breakpoint n");
+                    println!("  watch <cell>                 Watch cell for value changes");
+                    println!("  watch list                   List watchpoints");
+                    println!("  watch delete <n>             Remove watchpoint n");
+                    println!("  jump <n>                     Move code pointer to n");
+                    println!("  peek [n]                     Show memory around ptr (or cell n)");
+                    println!("  show instruction [n]         Show current (or nth) instruction");
+                    println!("  show memory                  Dump memory cells");
+                    println!("  where                        Show current source location");
+                    println!("  exit / quit / q              Quit debugger");
                 }
                 ["step"] => {
                     self.do_step(1)?;
@@ -242,6 +300,115 @@ impl Debugger {
                         None => println!("  ip={} (no source map)", ip),
                     }
                 }
+                ["cbreak", op, cell, cond, val] => {
+                    let op_idx: usize = match op.parse() {
+                        Ok(v) => v,
+                        Err(_) => {
+                            println!("Invalid op index.");
+                            continue;
+                        }
+                    };
+                    let cell_idx: usize = match cell.parse() {
+                        Ok(v) => v,
+                        Err(_) => {
+                            println!("Invalid cell index.");
+                            continue;
+                        }
+                    };
+                    let value: u8 = match val.parse() {
+                        Ok(v) => v,
+                        Err(_) => {
+                            println!("Invalid value (0-255).");
+                            continue;
+                        }
+                    };
+                    let condition = match *cond {
+                        "eq" => BreakCondition::Equals(value),
+                        "ne" => BreakCondition::NotEquals(value),
+                        "gt" => BreakCondition::GreaterThan(value),
+                        "lt" => BreakCondition::LessThan(value),
+                        _ => {
+                            println!("Unknown condition. Use: eq, ne, gt, lt");
+                            continue;
+                        }
+                    };
+                    let idx = self.conditional_breakpoints.len();
+                    println!(
+                        "{} #{} set at op {} when cell[{}] {}",
+                        "Conditional breakpoint".red().bold(),
+                        idx,
+                        op_idx,
+                        cell_idx,
+                        condition.display()
+                    );
+                    self.conditional_breakpoints.push(ConditionalBreakpoint {
+                        op_index: op_idx,
+                        cell: cell_idx,
+                        condition,
+                    });
+                }
+                ["cbreak", "list"] => {
+                    if self.conditional_breakpoints.is_empty() {
+                        println!("No conditional breakpoints set.");
+                    } else {
+                        for (i, cb) in self.conditional_breakpoints.iter().enumerate() {
+                            println!(
+                                "  #{}: op {} when cell[{}] {}",
+                                i,
+                                cb.op_index,
+                                cb.cell,
+                                cb.condition.display()
+                            );
+                        }
+                    }
+                }
+                ["cbreak", "delete", n] => {
+                    let idx: usize = n.parse().unwrap_or(usize::MAX);
+                    if idx < self.conditional_breakpoints.len() {
+                        self.conditional_breakpoints.remove(idx);
+                        println!("Conditional breakpoint #{} removed.", idx);
+                    } else {
+                        println!("No conditional breakpoint #{}.", idx);
+                    }
+                }
+                ["watch", cell] if cell.chars().all(|c| c.is_ascii_digit()) => {
+                    let cell_idx: usize = cell.parse().unwrap();
+                    let current_val = self.interp.tape_value(cell_idx);
+                    let idx = self.watchpoints.len();
+                    self.watchpoints.push(Watchpoint {
+                        cell: cell_idx,
+                        last_value: current_val,
+                    });
+                    println!(
+                        "{} #{} on cell[{}] (current value: {})",
+                        "Watchpoint".red().bold(),
+                        idx,
+                        cell_idx,
+                        current_val
+                    );
+                }
+                ["watch", "list"] => {
+                    if self.watchpoints.is_empty() {
+                        println!("No watchpoints set.");
+                    } else {
+                        for (i, wp) in self.watchpoints.iter().enumerate() {
+                            let current = self.interp.tape_value(wp.cell);
+                            println!(
+                                "  #{}: cell[{}] last={} current={}",
+                                i, wp.cell, wp.last_value, current
+                            );
+                        }
+                    }
+                }
+                ["watch", "delete", n] => {
+                    let idx: usize = n.parse().unwrap_or(usize::MAX);
+                    if idx < self.watchpoints.len() {
+                        self.watchpoints.remove(idx);
+                        println!("Watchpoint #{} removed.", idx);
+                    } else {
+                        println!("No watchpoint #{}.", idx);
+                    }
+                }
                 _ => {
                     println!("Unknown command: '{}'. Type 'help' for commands.", line);
                 }
@@ -273,17 +440,62 @@ impl Debugger {
                 println!("Program finished.");
                 break;
             }
-            if self.breakpoints.contains(&self.interp.code_pointer()) {
-                println!(
-                    "{} at {}.",
-                    "Hit breakpoint".red().bold(),
-                    self.interp.code_pointer()
-                );
+            let ip = self.interp.code_pointer();
+
+            // Check simple breakpoints
+            if self.breakpoints.contains(&ip) {
+                println!("{} at {}.", "Hit breakpoint".red().bold(), ip);
                 self.print_status();
                 break;
             }
+
+            // Check conditional breakpoints
+            let mut cbreak_hit = false;
+            for cb in &self.conditional_breakpoints {
+                if cb.op_index == ip {
+                    let val = self.interp.tape_value(cb.cell);
+                    if cb.condition.matches(val) {
+                        println!(
+                            "{} at op {} (cell[{}]={} {})",
+                            "Hit conditional breakpoint".red().bold(),
+                            ip,
+                            cb.cell,
+                            val,
+                            cb.condition.display()
+                        );
+                        cbreak_hit = true;
+                        break;
+                    }
+                }
+            }
+            if cbreak_hit {
+                self.print_status();
+                break;
+            }
+
             self.interp.step()?;
             self.flush_output();
+
+            // Check watchpoints after execution
+            let mut watch_hit = false;
+            for wp in &mut self.watchpoints {
+                let current = self.interp.tape_value(wp.cell);
+                if current != wp.last_value {
+                    println!(
+                        "{} cell[{}] changed: {} → {}",
+                        "Watchpoint triggered".red().bold(),
+                        wp.cell,
+                        wp.last_value,
+                        current
+                    );
+                    wp.last_value = current;
+                    watch_hit = true;
+                }
+            }
+            if watch_hit {
+                self.print_status();
+                break;
+            }
         }
         Ok(())
     }

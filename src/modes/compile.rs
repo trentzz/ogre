@@ -125,6 +125,28 @@ pub fn generate_c_from_program(program: &Program, tape_size: usize) -> String {
                     indent, offset
                 ));
             }
+            Op::Set(n) => {
+                out.push_str(&format!("{}*ptr = {};\n", indent, n));
+            }
+            Op::ScanRight => {
+                out.push_str(&format!("{}while (*ptr) ptr++;\n", indent));
+            }
+            Op::ScanLeft => {
+                out.push_str(&format!("{}while (*ptr) ptr--;\n", indent));
+            }
+            Op::MultiplyMove(targets) => {
+                for (offset, factor) in targets {
+                    if *factor == 1 {
+                        out.push_str(&format!("{}*(ptr + {}) += *ptr;\n", indent, offset));
+                    } else {
+                        out.push_str(&format!(
+                            "{}*(ptr + {}) += *ptr * {};\n",
+                            indent, offset, factor
+                        ));
+                    }
+                }
+                out.push_str(&format!("{}*ptr = 0;\n", indent));
+            }
         }
     }
 

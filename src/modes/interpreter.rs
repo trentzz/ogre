@@ -212,6 +212,10 @@ impl Interpreter {
             Op::Clear => '0',
             Op::MoveAdd(_) => 'M',
             Op::MoveSub(_) => 'm',
+            Op::Set(_) => 'S',
+            Op::ScanRight => 'R',
+            Op::ScanLeft => 'L',
+            Op::MultiplyMove(_) => '*',
         }
     }
 
@@ -232,6 +236,16 @@ impl Interpreter {
             Op::Clear => "Clear".to_string(),
             Op::MoveAdd(o) => format!("MoveAdd({})", o),
             Op::MoveSub(o) => format!("MoveSub({})", o),
+            Op::Set(n) => format!("Set({})", n),
+            Op::ScanRight => "ScanRight".to_string(),
+            Op::ScanLeft => "ScanLeft".to_string(),
+            Op::MultiplyMove(targets) => {
+                let parts: Vec<String> = targets
+                    .iter()
+                    .map(|(o, f)| format!("{}x{}", o, f))
+                    .collect();
+                format!("MultiplyMove({})", parts.join(","))
+            }
         }
     }
 
@@ -377,6 +391,45 @@ impl Interpreter {
                 self.tape[self.data_ptr] = 0;
                 self.cells_touched[self.data_ptr] = true;
                 self.cells_touched[target] = true;
+            }
+            Op::Set(n) => {
+                self.tape[self.data_ptr] = *n;
+                self.cells_touched[self.data_ptr] = true;
+            }
+            Op::ScanRight => {
+                while self.data_ptr < self.tape.len() && self.tape[self.data_ptr] != 0 {
+                    self.data_ptr += 1;
+                }
+                if self.data_ptr >= self.tape.len() {
+                    return Err(OgreError::TapeOverflow("scan right".to_string()).into());
+                }
+            }
+            Op::ScanLeft => {
+                while self.tape[self.data_ptr] != 0 {
+                    if self.data_ptr == 0 {
+                        return Err(OgreError::TapeOverflow("scan left".to_string()).into());
+                    }
+                    self.data_ptr -= 1;
+                }
+            }
+            Op::MultiplyMove(targets) => {
+                let val = self.tape[self.data_ptr];
+                if val != 0 {
+                    for (offset, factor) in targets {
+                        let target = (self.data_ptr as isize + offset) as usize;
+                        if target >= self.tape.len() {
+                            return Err(OgreError::TapeOverflow(
+                                "multiply move target out of bounds".to_string(),
+                            )
+                            .into());
+                        }
+                        self.tape[target] =
+                            self.tape[target].wrapping_add(val.wrapping_mul(*factor));
+                        self.cells_touched[target] = true;
+                    }
+                    self.tape[self.data_ptr] = 0;
+                    self.cells_touched[self.data_ptr] = true;
+                }
             }
         }
 

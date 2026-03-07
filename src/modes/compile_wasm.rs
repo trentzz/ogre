@@ -196,6 +196,62 @@ pub fn generate_wat(program: &Program, tape_size: usize) -> String {
                     indent
                 ));
             }
+            Op::Set(n) => {
+                out.push_str(&format!(
+                    "{}(i32.store8 (global.get $dp) (i32.const {}))\n",
+                    indent, n
+                ));
+            }
+            Op::ScanRight => {
+                out.push_str(&format!("{}(block $B\n", indent));
+                out.push_str(&format!("{}  (loop $L\n", indent));
+                out.push_str(&format!(
+                    "{}    (br_if $B (i32.eqz (i32.load8_u (global.get $dp))))\n",
+                    indent
+                ));
+                out.push_str(&format!(
+                    "{}    (global.set $dp (i32.add (global.get $dp) (i32.const 1)))\n",
+                    indent
+                ));
+                out.push_str(&format!("{}    (br $L)\n", indent));
+                out.push_str(&format!("{}))\n", indent));
+            }
+            Op::ScanLeft => {
+                out.push_str(&format!("{}(block $B\n", indent));
+                out.push_str(&format!("{}  (loop $L\n", indent));
+                out.push_str(&format!(
+                    "{}    (br_if $B (i32.eqz (i32.load8_u (global.get $dp))))\n",
+                    indent
+                ));
+                out.push_str(&format!(
+                    "{}    (global.set $dp (i32.sub (global.get $dp) (i32.const 1)))\n",
+                    indent
+                ));
+                out.push_str(&format!("{}    (br $L)\n", indent));
+                out.push_str(&format!("{}))\n", indent));
+            }
+            Op::MultiplyMove(targets) => {
+                for (offset, factor) in targets {
+                    let target_expr = if *offset >= 0 {
+                        format!("(i32.add (global.get $dp) (i32.const {}))", offset)
+                    } else {
+                        format!(
+                            "(i32.sub (global.get $dp) (i32.const {}))",
+                            offset.unsigned_abs()
+                        )
+                    };
+                    out.push_str(&format!("{}(i32.store8\n", indent));
+                    out.push_str(&format!("{}  {}\n", indent, target_expr));
+                    out.push_str(&format!(
+                        "{}  (i32.and (i32.add (i32.load8_u {}) (i32.mul (i32.load8_u (global.get $dp)) (i32.const {}))) (i32.const 255)))\n",
+                        indent, target_expr, factor
+                    ));
+                }
+                out.push_str(&format!(
+                    "{}(i32.store8 (global.get $dp) (i32.const 0))\n",
+                    indent
+                ));
+            }
         }
     }
 

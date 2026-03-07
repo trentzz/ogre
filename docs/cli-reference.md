@@ -93,6 +93,7 @@ ogre compile [file] [-o <output>] [-k/--keep] [--target native|wasm]
 | `-o <output>` | `-o` | derived from input filename | Name of the output binary. |
 | `--keep` | `-k` | off | Keep the intermediate `.c` file (or `.wat` for WASM) instead of deleting it after compilation. |
 | `--target <target>` | | `native` | Compilation target. `native` compiles to a native binary via C. `wasm` generates WebAssembly (requires `wat2wasm` from the WABT toolkit for binary `.wasm` output; otherwise produces a `.wat` text file). |
+| `--tape-size <n>` | | 30000 | (WASM only) Number of cells in the brainfuck tape. Determines WASM linear memory size. |
 
 **Examples:**
 
@@ -234,6 +235,12 @@ ogre debug [file] [--tape-size <n>]
 | `show instruction [n]` | Show the current instruction (or the instruction at index `n`) with surrounding context. |
 | `show memory` | Dump a wider range of memory cells around the data pointer. |
 | `where` | Show the current source location (file, line, function) if a source map is loaded. |
+| `cbreak <op> <cell> <cond> <val>` | Set a conditional breakpoint (conditions: `eq`, `ne`, `gt`, `lt`). Breaks at op only when cell meets condition. |
+| `cbreak list` | List all conditional breakpoints. |
+| `cbreak delete <n>` | Remove conditional breakpoint #n. |
+| `watch <cell>` | Set a watchpoint on a tape cell. Breaks when the cell's value changes. |
+| `watch list` | List all watchpoints with last/current values. |
+| `watch delete <n>` | Remove watchpoint #n. |
 | `exit` / `quit` / `q` | Quit the debugger. |
 
 **Examples:**
@@ -358,7 +365,7 @@ ogre analyse                         # analyse all project files
 Run structured tests from a JSON test file or all project test suites.
 
 ```
-ogre test [test-file.json] [--verbose]
+ogre test [test-file.json] [--verbose] [--filter <pattern>] [--junit <file>] [--parallel]
 ```
 
 **Description:** Loads test cases from a JSON file and runs each one: preprocesses the referenced `.bf` file, interprets it with the given input, and compares the output against the expected value. Supports exact string matching, regex matching, and instruction-count timeouts.
@@ -376,6 +383,9 @@ When no file argument is given, runs all test suites defined in the `[[tests]]` 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--verbose` | off | Show per-test PASS/FAIL status lines instead of compact dot notation. |
+| `--filter <pattern>` | none | Only run tests whose name contains the given substring. Case-sensitive. |
+| `--junit <file>` | none | Write test results in JUnit XML format to the specified file. Useful for CI integration (Jenkins, GitHub Actions, etc.). |
+| `--parallel` | off | Run test cases concurrently using multiple threads. Each test runs in its own thread with results collected via a shared mutex. |
 
 **Test file JSON schema:**
 
@@ -412,6 +422,10 @@ When no file argument is given, runs all test suites defined in the `[[tests]]` 
 ```bash
 ogre test tests/basic.json
 ogre test tests/basic.json --verbose
+ogre test --filter "hello"             # only run tests matching "hello"
+ogre test --junit results.xml          # output JUnit XML for CI
+ogre test --parallel                   # run tests concurrently
+ogre test --filter "io" --parallel --junit results.xml
 ogre test                              # run all project test suites
 ```
 
@@ -870,6 +884,155 @@ ogre stdlib show math
 |------|---------|
 | 0 | Module listed or shown successfully. |
 | 1 | Unknown module name. |
+
+---
+
+### ogre minify
+
+Strip all non-brainfuck characters from a source file.
+
+```
+ogre minify [file] [-o <output>] [--preprocess]
+```
+
+**Description:** Reads a brainfuck source file and removes all characters except the eight BF operators (`+-<>.,[]`). Optionally preprocesses the file first (expanding `@import`, `@fn`, `@call` directives) before minifying. The result is a minimal, portable BF program.
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `file` | Path to a `.bf` file. If omitted, uses the project entry from `ogre.toml`. |
+
+**Flags:**
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `-o <output>` | `-o` | stdout | Write the minified output to a file. If omitted, prints to stdout. |
+| `--preprocess` | | off | Preprocess the file (expand directives) before minifying. |
+
+**Examples:**
+
+```bash
+ogre minify hello.bf
+ogre minify hello.bf -o hello.min.bf
+ogre minify --preprocess project.bf -o packed.bf
+```
+
+**Exit codes:**
+
+| Code | Meaning |
+|------|---------|
+| 0 | Minification succeeded. |
+| 1 | File not found or preprocessing error. |
+
+---
+
+### ogre clean
+
+Remove build artifacts from the current project.
+
+```
+ogre clean [--verbose]
+```
+
+**Description:** Removes build artifacts from the current directory: `.o`, `.c`, `.wat`, and `.wasm` files (excluding those in `src/` or `lib/` directories). Also removes `.ogre-cache` and `ogre-out` directories if they exist.
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--verbose` | off | Print each file or directory being removed. |
+
+**Examples:**
+
+```bash
+ogre clean
+ogre clean --verbose
+```
+
+**Exit codes:**
+
+| Code | Meaning |
+|------|---------|
+| 0 | Clean completed (reports number of artifacts removed). |
+| 1 | Error during cleanup. |
+
+---
+
+### ogre explain
+
+Analyze and explain what a brainfuck program does in plain English.
+
+```
+ogre explain [file]
+```
+
+**Description:** Preprocesses the source file, then performs a structural analysis to describe the program's behavior in plain English. The explanation includes:
+
+- Program size (total BF instructions)
+- Program type classification (I/O, output-only, no-I/O)
+- Pattern detection (cat program, hello world, clear idioms, move patterns, scan patterns)
+- IR optimization statistics (reduction percentage)
+- Memory usage estimate (cells, loops, I/O counts)
+- Actual output for small, no-input programs (< 1000 ops, run with 100K instruction limit)
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `file` | Path to a `.bf` file. If omitted, uses the project entry from `ogre.toml`. |
+
+**Examples:**
+
+```bash
+ogre explain hello.bf
+ogre explain examples/cat/src/main.bf
+ogre explain                           # explain project entry
+```
+
+**Exit codes:**
+
+| Code | Meaning |
+|------|---------|
+| 0 | Explanation generated. |
+| 1 | File not found or preprocessing error. |
+
+---
+
+### ogre completions
+
+Generate shell completion scripts for ogre.
+
+```
+ogre completions <shell>
+```
+
+**Description:** Generates shell completion scripts that can be sourced to enable tab-completion for ogre commands, flags, and arguments. The output is printed to stdout and can be redirected to the appropriate completion file for your shell.
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `shell` | The shell to generate completions for: `bash`, `zsh`, `fish`, `elvish`, or `powershell`. |
+
+**Examples:**
+
+```bash
+# Bash
+ogre completions bash > ~/.local/share/bash-completion/completions/ogre
+
+# Zsh
+ogre completions zsh > ~/.zfunc/_ogre
+
+# Fish
+ogre completions fish > ~/.config/fish/completions/ogre.fish
+```
+
+**Exit codes:**
+
+| Code | Meaning |
+|------|---------|
+| 0 | Completions generated. |
 
 ---
 

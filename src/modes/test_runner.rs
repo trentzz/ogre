@@ -13,6 +13,26 @@ use crate::verbosity::Verbosity;
 /// Default instruction limit for test timeout (10 million).
 const DEFAULT_INSTRUCTION_LIMIT: u64 = 10_000_000;
 
+/// Options for test execution.
+#[derive(Default)]
+pub struct TestOptions {
+    /// Filter tests by name (substring match).
+    pub filter: Option<String>,
+    /// Output JUnit XML to this file path.
+    pub junit_output: Option<String>,
+    /// Run tests in parallel.
+    pub parallel: bool,
+}
+
+/// Result of a single test case execution.
+#[derive(Debug)]
+struct TestResult {
+    name: String,
+    passed: bool,
+    detail: Option<String>,
+    duration_ms: u128,
+}
+
 #[derive(Deserialize)]
 pub struct TestCase {
     pub name: String,
@@ -240,6 +260,15 @@ pub fn run_project_tests_ex(
     base: &Path,
     verbosity: Verbosity,
 ) -> Result<()> {
+    run_project_tests_with_opts(project, base, verbosity, &TestOptions::default())
+}
+
+pub fn run_project_tests_with_opts(
+    project: &OgreProject,
+    base: &Path,
+    verbosity: Verbosity,
+    opts: &TestOptions,
+) -> Result<()> {
     if project.tests.is_empty() {
         if !verbosity.is_quiet() {
             println!("No tests defined in ogre.toml.");
@@ -249,15 +278,17 @@ pub fn run_project_tests_ex(
 
     let mut total_passed = 0usize;
     let mut total_failed = 0usize;
+    let mut all_results: Vec<TestResult> = Vec::new();
 
     for test_ref in &project.tests {
         let test_path = base.join(&test_ref.file);
         let section_name = test_ref.name.as_deref();
 
-        // Resolve bf paths relative to the project base
-        let (p, f) = run_tests_from_file_ex(&test_path, section_name, base, verbosity)?;
+        let (p, f, results) =
+            run_tests_from_file_with_opts(&test_path, section_name, base, verbosity, opts)?;
         total_passed += p;
         total_failed += f;
+        all_results.extend(results);
     }
 
     if !verbosity.is_quiet() {
@@ -267,10 +298,301 @@ pub fn run_project_tests_ex(
             total_passed + total_failed
         );
     }
+
+    // Write JUnit XML if requested
+    if let Some(ref junit_path) = opts.junit_output {
+        write_junit_xml(junit_path, &all_results)?;
+        if !verbosity.is_quiet() {
+            println!("JUnit XML written to: {}", junit_path);
+        }
+    }
+
     if total_failed > 0 {
         bail!("{} test(s) failed", total_failed);
     }
     Ok(())
+}
+
+/// Run tests with options (filter, parallel, JUnit).
+pub fn run_tests_with_opts(
+    test_file: &Path,
+    verbosity: Verbosity,
+    opts: &TestOptions,
+) -> Result<()> {
+    let base_dir = test_file
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let (_, failed, results) =
+        run_tests_from_file_with_opts(test_file, None, &base_dir, verbosity, opts)?;
+
+    if let Some(ref junit_path) = opts.junit_output {
+        write_junit_xml(junit_path, &results)?;
+        if !verbosity.is_quiet() {
+            println!("JUnit XML written to: {}", junit_path);
+        }
+    }
+
+    if failed > 0 {
+        bail!("{} test(s) failed", failed);
+    }
+    Ok(())
+}
+
+fn run_tests_from_file_with_opts(
+    test_file: &Path,
+    section_name: Option<&str>,
+    base_dir: &Path,
+    verbosity: Verbosity,
+    opts: &TestOptions,
+) -> Result<(usize, usize, Vec<TestResult>)> {
+    let json = fs::read_to_string(test_file)?;
+    let mut cases: Vec<TestCase> = serde_json::from_str(&json)?;
+
+    // Apply filter
+    if let Some(ref filter) = opts.filter {
+        cases.retain(|c| c.name.contains(filter.as_str()));
+    }
+
+    if let Some(name) = section_name {
+        if !verbosity.is_quiet() {
+            println!("=== {} ===", name);
+        }
+    }
+
+    let total = cases.len();
+    let verbose = verbosity.is_verbose();
+
+    let results: Vec<TestResult> = if opts.parallel && cases.len() > 1 {
+        // Run tests in parallel using threads
+        use std::sync::{Arc, Mutex};
+        use std::thread;
+
+        let results = Arc::new(Mutex::new(Vec::new()));
+        let handles: Vec<_> = cases
+            .into_iter()
+            .map(|case| {
+                let base = base_dir.to_path_buf();
+                let results = Arc::clone(&results);
+                thread::spawn(move || {
+                    let result = run_single_test(&case, &base);
+                    results.lock().unwrap().push(result);
+                })
+            })
+            .collect();
+
+        for h in handles {
+            let _ = h.join();
+        }
+
+        Arc::try_unwrap(results).unwrap().into_inner().unwrap()
+    } else {
+        cases
+            .iter()
+            .map(|case| run_single_test(case, base_dir))
+            .collect()
+    };
+
+    let mut passed = 0;
+    let mut failed = 0;
+    let mut failures: Vec<(String, String)> = Vec::new();
+
+    for r in &results {
+        if r.passed {
+            passed += 1;
+            if verbose {
+                println!("  {} {}", "PASS".green().bold(), r.name);
+            } else if !verbosity.is_quiet() {
+                print!("{}", ".".green());
+            }
+        } else {
+            failed += 1;
+            if verbose {
+                println!("  {} {}", "FAIL".red().bold(), r.name);
+            } else if !verbosity.is_quiet() {
+                print!("{}", "F".red());
+            }
+            if let Some(ref detail) = r.detail {
+                failures.push((r.name.clone(), detail.clone()));
+            }
+        }
+    }
+
+    if !verbosity.is_quiet() && !verbose {
+        println!();
+    }
+
+    if !failures.is_empty() {
+        println!();
+        println!("{}", "Failures:".red().bold());
+        for (name, detail) in &failures {
+            println!("  {} {}", "FAIL".red().bold(), name);
+            println!("      {}", detail);
+        }
+        println!();
+    }
+
+    if !verbosity.is_quiet() {
+        if failed > 0 {
+            println!("{}/{} tests passed", passed.to_string().red(), total);
+        } else {
+            println!("{}/{} tests passed", passed.to_string().green(), total);
+        }
+    }
+
+    Ok((passed, failed, results))
+}
+
+fn run_single_test(case: &TestCase, base_dir: &Path) -> TestResult {
+    let start = std::time::Instant::now();
+
+    // Check for conflicting output and output_regex
+    if case.output_regex.is_some() && !case.output.is_empty() {
+        return TestResult {
+            name: case.name.clone(),
+            passed: false,
+            detail: Some(
+                "test case specifies both 'output' and 'output_regex' — use only one".to_string(),
+            ),
+            duration_ms: start.elapsed().as_millis(),
+        };
+    }
+
+    let bf_path: PathBuf = if Path::new(&case.brainfuck).is_absolute() {
+        PathBuf::from(&case.brainfuck)
+    } else {
+        base_dir.join(&case.brainfuck)
+    };
+
+    let expanded = match Preprocessor::process_file(&bf_path) {
+        Err(e) => {
+            return TestResult {
+                name: case.name.clone(),
+                passed: false,
+                detail: Some(format!("preprocess error: {}", e)),
+                duration_ms: start.elapsed().as_millis(),
+            };
+        }
+        Ok(s) => s,
+    };
+
+    let instruction_limit = case.timeout.unwrap_or(DEFAULT_INSTRUCTION_LIMIT);
+
+    match Interpreter::with_input(&expanded, &case.input) {
+        Err(e) => TestResult {
+            name: case.name.clone(),
+            passed: false,
+            detail: Some(format!("parse error: {}", e)),
+            duration_ms: start.elapsed().as_millis(),
+        },
+        Ok(mut interp) => match interp.run_with_limit(instruction_limit) {
+            Err(e) => TestResult {
+                name: case.name.clone(),
+                passed: false,
+                detail: Some(format!("runtime error: {}", e)),
+                duration_ms: start.elapsed().as_millis(),
+            },
+            Ok(false) => TestResult {
+                name: case.name.clone(),
+                passed: false,
+                detail: Some(format!(
+                    "timeout: exceeded {} instruction limit",
+                    instruction_limit
+                )),
+                duration_ms: start.elapsed().as_millis(),
+            },
+            Ok(true) => {
+                let actual = interp.output_as_string();
+                let pass = if let Some(ref regex_str) = case.output_regex {
+                    match Regex::new(regex_str) {
+                        Ok(re) => re.is_match(&actual),
+                        Err(e) => {
+                            return TestResult {
+                                name: case.name.clone(),
+                                passed: false,
+                                detail: Some(format!("invalid regex '{}': {}", regex_str, e)),
+                                duration_ms: start.elapsed().as_millis(),
+                            };
+                        }
+                    }
+                } else {
+                    actual == case.output
+                };
+
+                if pass {
+                    TestResult {
+                        name: case.name.clone(),
+                        passed: true,
+                        detail: None,
+                        duration_ms: start.elapsed().as_millis(),
+                    }
+                } else {
+                    let detail = if let Some(ref regex_str) = case.output_regex {
+                        format!("output {:?} does not match regex /{}/", actual, regex_str)
+                    } else {
+                        format!("expected: {:?}\n      actual:   {:?}", case.output, actual)
+                    };
+                    TestResult {
+                        name: case.name.clone(),
+                        passed: false,
+                        detail: Some(detail),
+                        duration_ms: start.elapsed().as_millis(),
+                    }
+                }
+            }
+        },
+    }
+}
+
+/// Generate JUnit XML from test results.
+fn write_junit_xml(path: &str, results: &[TestResult]) -> Result<()> {
+    let mut xml = String::new();
+    xml.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+
+    let total = results.len();
+    let failures = results.iter().filter(|r| !r.passed).count();
+    let total_time: f64 = results.iter().map(|r| r.duration_ms as f64 / 1000.0).sum();
+
+    xml.push_str(&format!(
+        "<testsuite name=\"ogre\" tests=\"{}\" failures=\"{}\" time=\"{:.3}\">\n",
+        total, failures, total_time
+    ));
+
+    for r in results {
+        let time = r.duration_ms as f64 / 1000.0;
+        if r.passed {
+            xml.push_str(&format!(
+                "  <testcase name=\"{}\" time=\"{:.3}\"/>\n",
+                xml_escape(&r.name),
+                time
+            ));
+        } else {
+            xml.push_str(&format!(
+                "  <testcase name=\"{}\" time=\"{:.3}\">\n",
+                xml_escape(&r.name),
+                time
+            ));
+            xml.push_str(&format!(
+                "    <failure message=\"{}\">{}</failure>\n",
+                xml_escape(r.detail.as_deref().unwrap_or("test failed")),
+                xml_escape(r.detail.as_deref().unwrap_or(""))
+            ));
+            xml.push_str("  </testcase>\n");
+        }
+    }
+
+    xml.push_str("</testsuite>\n");
+    fs::write(path, &xml)?;
+    Ok(())
+}
+
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
 }
 
 #[cfg(test)]
