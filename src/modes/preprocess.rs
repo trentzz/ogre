@@ -102,6 +102,196 @@ fn unknown_module_message(name: &str) -> String {
     msg
 }
 
+/// Evaluate a constant expression supporting +, -, *, /, %, parentheses,
+/// numeric literals, and references to previously defined constants.
+fn eval_const_expr(
+    expr: &str,
+    constants: &HashMap<String, usize>,
+) -> std::result::Result<usize, String> {
+    let tokens = tokenize_expr(expr)?;
+    let mut pos = 0;
+    let result = parse_additive(&tokens, &mut pos, constants)?;
+    if pos < tokens.len() {
+        return Err(format!("unexpected token at position {}", pos));
+    }
+    Ok(result)
+}
+
+#[derive(Debug, Clone)]
+enum ExprToken {
+    Num(usize),
+    Ident(String),
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    Percent,
+    LParen,
+    RParen,
+}
+
+fn tokenize_expr(expr: &str) -> std::result::Result<Vec<ExprToken>, String> {
+    let mut tokens = Vec::new();
+    let chars: Vec<char> = expr.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        match chars[i] {
+            ' ' | '\t' | '\n' | '\r' => i += 1,
+            '+' => {
+                tokens.push(ExprToken::Plus);
+                i += 1;
+            }
+            '-' => {
+                tokens.push(ExprToken::Minus);
+                i += 1;
+            }
+            '*' => {
+                tokens.push(ExprToken::Star);
+                i += 1;
+            }
+            '/' => {
+                tokens.push(ExprToken::Slash);
+                i += 1;
+            }
+            '%' => {
+                tokens.push(ExprToken::Percent);
+                i += 1;
+            }
+            '(' => {
+                tokens.push(ExprToken::LParen);
+                i += 1;
+            }
+            ')' => {
+                tokens.push(ExprToken::RParen);
+                i += 1;
+            }
+            c if c.is_ascii_digit() => {
+                let mut num = String::new();
+                while i < chars.len() && chars[i].is_ascii_digit() {
+                    num.push(chars[i]);
+                    i += 1;
+                }
+                tokens.push(ExprToken::Num(
+                    num.parse()
+                        .map_err(|_| format!("invalid number: {}", num))?,
+                ));
+            }
+            c if c.is_ascii_alphabetic() || c == '_' => {
+                let mut ident = String::new();
+                while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '_') {
+                    ident.push(chars[i]);
+                    i += 1;
+                }
+                tokens.push(ExprToken::Ident(ident));
+            }
+            c => return Err(format!("unexpected character in expression: '{}'", c)),
+        }
+    }
+    Ok(tokens)
+}
+
+fn parse_additive(
+    tokens: &[ExprToken],
+    pos: &mut usize,
+    constants: &HashMap<String, usize>,
+) -> std::result::Result<usize, String> {
+    let mut left = parse_multiplicative(tokens, pos, constants)?;
+    while *pos < tokens.len() {
+        match tokens[*pos] {
+            ExprToken::Plus => {
+                *pos += 1;
+                let right = parse_multiplicative(tokens, pos, constants)?;
+                left = left.wrapping_add(right);
+            }
+            ExprToken::Minus => {
+                *pos += 1;
+                let right = parse_multiplicative(tokens, pos, constants)?;
+                left = left.wrapping_sub(right);
+            }
+            _ => break,
+        }
+    }
+    Ok(left)
+}
+
+fn parse_multiplicative(
+    tokens: &[ExprToken],
+    pos: &mut usize,
+    constants: &HashMap<String, usize>,
+) -> std::result::Result<usize, String> {
+    let mut left = parse_primary(tokens, pos, constants)?;
+    while *pos < tokens.len() {
+        match tokens[*pos] {
+            ExprToken::Star => {
+                *pos += 1;
+                let right = parse_primary(tokens, pos, constants)?;
+                left = left.wrapping_mul(right);
+            }
+            ExprToken::Slash => {
+                *pos += 1;
+                let right = parse_primary(tokens, pos, constants)?;
+                if right == 0 {
+                    return Err("division by zero".to_string());
+                }
+                left /= right;
+            }
+            ExprToken::Percent => {
+                *pos += 1;
+                let right = parse_primary(tokens, pos, constants)?;
+                if right == 0 {
+                    return Err("modulo by zero".to_string());
+                }
+                left %= right;
+            }
+            _ => break,
+        }
+    }
+    Ok(left)
+}
+
+fn parse_primary(
+    tokens: &[ExprToken],
+    pos: &mut usize,
+    constants: &HashMap<String, usize>,
+) -> std::result::Result<usize, String> {
+    if *pos >= tokens.len() {
+        return Err("unexpected end of expression".to_string());
+    }
+    match &tokens[*pos] {
+        ExprToken::Num(n) => {
+            let val = *n;
+            *pos += 1;
+            Ok(val)
+        }
+        ExprToken::Ident(name) => {
+            let val = constants
+                .get(name)
+                .copied()
+                .ok_or_else(|| format!("undefined constant: '{}'", name))?;
+            *pos += 1;
+            Ok(val)
+        }
+        ExprToken::LParen => {
+            *pos += 1;
+            let val = parse_additive(tokens, pos, constants)?;
+            if *pos >= tokens.len() {
+                return Err("missing closing parenthesis".to_string());
+            }
+            match &tokens[*pos] {
+                ExprToken::RParen => {
+                    *pos += 1;
+                    Ok(val)
+                }
+                _ => Err("expected closing parenthesis".to_string()),
+            }
+        }
+        _ => Err(format!(
+            "unexpected token in expression at position {}",
+            pos
+        )),
+    }
+}
+
 // Embedded standard library modules
 const STDLIB_IO: &str = include_str!("../../stdlib/io.bf");
 const STDLIB_MATH: &str = include_str!("../../stdlib/math.bf");
@@ -455,19 +645,48 @@ impl Preprocessor {
                         }
                         skip_spaces(&chars, &mut i);
                         col = Self::update_col_after_skip(source, i, line);
-                        let mut num_str = String::new();
-                        while i < chars.len() && chars[i].is_ascii_digit() {
-                            num_str.push(chars[i]);
-                            i += 1;
-                            col += 1;
-                        }
-                        if num_str.is_empty() {
-                            bail!("@const {}: expected numeric value", name);
-                        }
-                        let value: usize = num_str.parse().map_err(|_| {
-                            anyhow::anyhow!("@const {}: invalid value {:?}", name, num_str)
-                        })?;
-                        self.constants.insert(name, value);
+                        // Support expressions: parenthesized or plain number
+                        let value = if i < chars.len() && chars[i] == '(' {
+                            // Expression in parentheses
+                            let mut expr = String::new();
+                            let mut depth = 0;
+                            while i < chars.len() {
+                                if chars[i] == '(' {
+                                    depth += 1;
+                                } else if chars[i] == ')' {
+                                    depth -= 1;
+                                    if depth == 0 {
+                                        expr.push(chars[i]);
+                                        i += 1;
+                                        col += 1;
+                                        break;
+                                    }
+                                }
+                                expr.push(chars[i]);
+                                i += 1;
+                                col += 1;
+                            }
+                            // Strip the single outer paren pair
+                            let inner = &expr[1..expr.len() - 1];
+                            eval_const_expr(inner, &self.constants)
+                                .map_err(|e| anyhow::anyhow!("@const {}: {}", name, e))?
+                        } else {
+                            let mut num_str = String::new();
+                            while i < chars.len() && chars[i].is_ascii_digit() {
+                                num_str.push(chars[i]);
+                                i += 1;
+                                col += 1;
+                            }
+                            if num_str.is_empty() {
+                                bail!("@const {}: expected numeric value or expression", name);
+                            }
+                            num_str.parse().map_err(|_| {
+                                anyhow::anyhow!("@const {}: invalid value {:?}", name, num_str)
+                            })?
+                        };
+                        self.constants.insert(name.clone(), value);
+                        // Also define the symbol for @ifdef
+                        self.defines.insert(name);
                     }
 
                     "use" => {
@@ -889,18 +1108,41 @@ impl Preprocessor {
                             bail!("@const: missing constant name");
                         }
                         skip_spaces(&chars, &mut i);
-                        // Parse the numeric value
-                        let mut num_str = String::new();
-                        while i < chars.len() && chars[i].is_ascii_digit() {
-                            num_str.push(chars[i]);
-                            i += 1;
-                        }
-                        if num_str.is_empty() {
-                            bail!("@const {}: expected numeric value", name);
-                        }
-                        let value: usize = num_str.parse().map_err(|_| {
-                            anyhow::anyhow!("@const {}: invalid value {:?}", name, num_str)
-                        })?;
+                        // Support expressions: parenthesized or plain number
+                        let value = if i < chars.len() && chars[i] == '(' {
+                            let mut expr = String::new();
+                            let mut depth = 0;
+                            while i < chars.len() {
+                                if chars[i] == '(' {
+                                    depth += 1;
+                                } else if chars[i] == ')' {
+                                    depth -= 1;
+                                    if depth == 0 {
+                                        expr.push(chars[i]);
+                                        i += 1;
+                                        break;
+                                    }
+                                }
+                                expr.push(chars[i]);
+                                i += 1;
+                            }
+                            // Strip the single outer paren pair
+                            let inner = &expr[1..expr.len() - 1];
+                            eval_const_expr(inner, &self.constants)
+                                .map_err(|e| anyhow::anyhow!("@const {}: {}", name, e))?
+                        } else {
+                            let mut num_str = String::new();
+                            while i < chars.len() && chars[i].is_ascii_digit() {
+                                num_str.push(chars[i]);
+                                i += 1;
+                            }
+                            if num_str.is_empty() {
+                                bail!("@const {}: expected numeric value or expression", name);
+                            }
+                            num_str.parse().map_err(|_| {
+                                anyhow::anyhow!("@const {}: invalid value {:?}", name, num_str)
+                            })?
+                        };
                         self.constants.insert(name, value);
                     }
 
@@ -1668,5 +1910,83 @@ mod tests {
         assert_eq!(plus_count, 3);
         // Source map should have entries for the + characters
         assert!(map.len() >= 3);
+    }
+
+    // ---- Arithmetic @const tests ----
+
+    #[test]
+    fn test_const_arithmetic_addition() {
+        let src = "@const X (5 + 3)\n@use X";
+        let out = process(src).unwrap();
+        assert_eq!(out.chars().filter(|c| *c == '+').count(), 8);
+    }
+
+    #[test]
+    fn test_const_arithmetic_subtraction() {
+        let src = "@const X (10 - 3)\n@use X";
+        let out = process(src).unwrap();
+        assert_eq!(out.chars().filter(|c| *c == '+').count(), 7);
+    }
+
+    #[test]
+    fn test_const_arithmetic_multiplication() {
+        let src = "@const X (3 * 4)\n@use X";
+        let out = process(src).unwrap();
+        assert_eq!(out.chars().filter(|c| *c == '+').count(), 12);
+    }
+
+    #[test]
+    fn test_const_arithmetic_division() {
+        let src = "@const X (10 / 3)\n@use X";
+        let out = process(src).unwrap();
+        assert_eq!(out.chars().filter(|c| *c == '+').count(), 3);
+    }
+
+    #[test]
+    fn test_const_arithmetic_modulo() {
+        let src = "@const X (10 % 3)\n@use X";
+        let out = process(src).unwrap();
+        assert_eq!(out.chars().filter(|c| *c == '+').count(), 1);
+    }
+
+    #[test]
+    fn test_const_arithmetic_reference_other_const() {
+        let src = "@const A 10\n@const B (A + 5)\n@use B";
+        let out = process(src).unwrap();
+        assert_eq!(out.chars().filter(|c| *c == '+').count(), 15);
+    }
+
+    #[test]
+    fn test_const_arithmetic_nested_parens() {
+        let src = "@const X ((2 + 3) * 4)\n@use X";
+        let out = process(src).unwrap();
+        assert_eq!(out.chars().filter(|c| *c == '+').count(), 20);
+    }
+
+    #[test]
+    fn test_const_arithmetic_complex_expression() {
+        let src = "@const BASE 65\n@const RANGE 26\n@const END (BASE + RANGE - 1)\n@use END";
+        let out = process(src).unwrap();
+        assert_eq!(out.chars().filter(|c| *c == '+').count(), 90);
+    }
+
+    #[test]
+    fn test_const_arithmetic_division_by_zero() {
+        let src = "@const X (10 / 0)\n@use X";
+        assert!(process(src).is_err());
+    }
+
+    #[test]
+    fn test_const_arithmetic_undefined_ref() {
+        let src = "@const X (UNDEFINED + 1)\n@use X";
+        assert!(process(src).is_err());
+    }
+
+    #[test]
+    fn test_const_plain_still_works() {
+        // Ensure plain numeric @const still works
+        let src = "@const X 42\n@use X";
+        let out = process(src).unwrap();
+        assert_eq!(out.chars().filter(|c| *c == '+').count(), 42);
     }
 }

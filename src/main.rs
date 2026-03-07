@@ -12,8 +12,9 @@ mod project;
 pub mod verbosity;
 
 use modes::{
-    analyse, bench, check, clean, compile, compile_wasm, debug, doc, explain, format, generate,
-    init, minify, new, pack, run, start, stdlib, test_runner, trace,
+    analyse, bench, check, clean, compile, compile_llvm, compile_wasm, debug, dialect, doc,
+    explain, format, generate, init, lint, minify, new, pack, profile, run, start, stdlib,
+    test_runner, trace,
 };
 use project::OgreProject;
 use verbosity::Verbosity;
@@ -139,6 +140,19 @@ enum Commands {
         after_help = "Examples:\n  ogre completions bash\n  ogre completions zsh\n  ogre completions fish"
     )]
     Completions(CompletionsArgs),
+    /// Profile a brainfuck program (instruction mix, hot cells, loop analysis)
+    #[command(
+        after_help = "Examples:\n  ogre profile hello.bf\n  ogre profile --tape-size 60000 big.bf"
+    )]
+    Profile(ProfileArgs),
+    /// Lint a brainfuck/brainfunct file for common issues
+    #[command(after_help = "Examples:\n  ogre lint hello.bf\n  ogre lint --preprocess hello.bf")]
+    Lint(LintArgs),
+    /// Convert between brainfuck dialects (Ook!, Trollscript, custom)
+    #[command(
+        after_help = "Examples:\n  ogre dialect --to ook hello.bf\n  ogre dialect --from ook --to bf program.ook"
+    )]
+    Dialect(DialectArgs),
 }
 
 // ---- Per-subcommand arg structs ----
@@ -168,12 +182,15 @@ struct CompileArgs {
     /// Keep the intermediate .c file
     #[arg(short = 'k', long)]
     keep: bool,
-    /// Compilation target: "native" (default) or "wasm"
+    /// Compilation target: "native" (default), "wasm", or "llvm"
     #[arg(long, default_value = "native")]
     target: String,
-    /// Tape size for WASM compilation (default 30000)
+    /// Tape size (default 30000)
     #[arg(long)]
     tape_size: Option<usize>,
+    /// Optimization level for LLVM backend (0, 1, 2, 3)
+    #[arg(long, default_value = "2")]
+    opt_level: String,
 }
 
 #[derive(Args)]
@@ -266,6 +283,9 @@ struct NewArgs {
     /// Include standard library imports in the starter file
     #[arg(long)]
     with_std: bool,
+    /// Project template: basic (default), game, library, converter
+    #[arg(long)]
+    template: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -358,6 +378,39 @@ struct ExplainArgs {
 struct CompletionsArgs {
     /// Shell to generate completions for
     shell: String,
+}
+
+#[derive(Args)]
+struct ProfileArgs {
+    /// Path to the brainfuck file (uses project entry if omitted)
+    file: Option<String>,
+    /// Tape size (number of cells, default 30000)
+    #[arg(long)]
+    tape_size: Option<usize>,
+}
+
+#[derive(Args)]
+struct LintArgs {
+    /// Path to the brainfuck file (lints all project files if omitted)
+    file: Option<String>,
+    /// Also lint the preprocessed output
+    #[arg(long)]
+    preprocess: bool,
+}
+
+#[derive(Args)]
+struct DialectArgs {
+    /// Path to the source file
+    file: String,
+    /// Source dialect (default: brainfuck)
+    #[arg(long)]
+    from: Option<String>,
+    /// Target dialect (brainfuck, ook, trollscript)
+    #[arg(long)]
+    to: String,
+    /// Output file (prints to stdout if omitted)
+    #[arg(short = 'o', long)]
+    output: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -485,6 +538,35 @@ fn run(cli: Cli) -> Result<()> {
                         verbosity,
                     )?;
                 }
+                "llvm" => {
+                    let opt =
+                        compile_llvm::OptLevel::parse_level(&args.opt_level).ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "invalid --opt-level: {}. Use 0, 1, 2, or 3",
+                                args.opt_level
+                            )
+                        })?;
+                    if dep_fns.is_empty() {
+                        compile_llvm::compile_to_llvm(
+                            &file,
+                            args.output.as_deref(),
+                            args.keep,
+                            tape_size,
+                            opt,
+                            verbosity,
+                        )?;
+                    } else {
+                        compile_llvm::compile_to_llvm_with_deps(
+                            &file,
+                            args.output.as_deref(),
+                            args.keep,
+                            tape_size,
+                            opt,
+                            verbosity,
+                            &dep_fns,
+                        )?;
+                    }
+                }
                 "native" | "" => {
                     if dep_fns.is_empty() {
                         compile::compile_ex(&file, args.output.as_deref(), args.keep, verbosity)?;
@@ -500,7 +582,10 @@ fn run(cli: Cli) -> Result<()> {
                     }
                 }
                 other => {
-                    bail!("unknown target {:?}. Use \"native\" or \"wasm\".", other);
+                    bail!(
+                        "unknown target {:?}. Use \"native\", \"wasm\", or \"llvm\".",
+                        other
+                    );
                 }
             }
         }
@@ -673,7 +758,12 @@ fn run(cli: Cli) -> Result<()> {
         }
 
         Commands::New(args) => {
-            new::new_project_ex(&args.name, args.with_std, verbosity)?;
+            new::new_project_ex(
+                &args.name,
+                args.with_std,
+                args.template.as_deref(),
+                verbosity,
+            )?;
         }
 
         Commands::Check(args) => {
@@ -839,6 +929,59 @@ fn run(cli: Cli) -> Result<()> {
             })?;
             let mut cmd = Cli::command();
             clap_complete::generate(shell, &mut cmd, "ogre", &mut std::io::stdout());
+        }
+
+        Commands::Profile(args) => {
+            let tape_size = args.tape_size.unwrap_or(30_000);
+            let (file, dep_fns) = match args.file {
+                Some(f) => (
+                    std::path::PathBuf::from(f),
+                    std::collections::HashMap::new(),
+                ),
+                None => {
+                    let (proj, base) = require_project()?;
+                    let deps = proj.collect_dependency_functions(&base)?;
+                    (proj.entry_path(&base), deps)
+                }
+            };
+            if dep_fns.is_empty() {
+                profile::profile_file(&file, tape_size)?;
+            } else {
+                profile::profile_file_with_deps(&file, tape_size, &dep_fns)?;
+            }
+        }
+
+        Commands::Lint(args) => {
+            let mut total_warnings = 0;
+            match args.file {
+                Some(f) => {
+                    let warnings = lint::lint_file(Path::new(&f), args.preprocess)?;
+                    total_warnings += warnings.len();
+                }
+                None => {
+                    let (proj, base) = require_project()?;
+                    let files = proj.resolve_include_files(&base)?;
+                    if files.is_empty() && !verbosity.is_quiet() {
+                        println!("No .bf files found in project include paths.");
+                    }
+                    for f in &files {
+                        let warnings = lint::lint_file(f, args.preprocess)?;
+                        total_warnings += warnings.len();
+                    }
+                }
+            }
+            if total_warnings > 0 {
+                process::exit(1);
+            }
+        }
+
+        Commands::Dialect(args) => {
+            dialect::convert_file(
+                Path::new(&args.file),
+                args.from.as_deref(),
+                &args.to,
+                args.output.as_deref(),
+            )?;
         }
 
         Commands::Generate(gen) => match gen {
