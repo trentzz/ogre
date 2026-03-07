@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use anyhow::{bail, Result};
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
 use colored::control::set_override;
 use std::path::Path;
 use std::process;
@@ -12,8 +12,8 @@ mod project;
 pub mod verbosity;
 
 use modes::{
-    analyse, bench, check, compile, compile_wasm, debug, doc, format, generate, init, new, pack,
-    run, start, stdlib, test_runner, trace,
+    analyse, bench, check, clean, compile, compile_wasm, debug, doc, explain, format, generate,
+    init, minify, new, pack, run, start, stdlib, test_runner, trace,
 };
 use project::OgreProject;
 use verbosity::Verbosity;
@@ -123,6 +123,22 @@ enum Commands {
         after_help = "Examples:\n  ogre trace hello.bf\n  ogre trace --every 100 hello.bf\n  ogre trace --tape-size 1000 hello.bf"
     )]
     Trace(TraceArgs),
+    /// Strip all non-BF characters, producing minimal output
+    #[command(
+        after_help = "Examples:\n  ogre minify hello.bf\n  ogre minify hello.bf -o hello.min.bf\n  ogre minify --preprocess hello.bf"
+    )]
+    Minify(MinifyArgs),
+    /// Remove build artifacts and cached files
+    #[command(after_help = "Examples:\n  ogre clean\n  ogre clean --verbose")]
+    Clean(CleanArgs),
+    /// Explain what a brainfuck program does in plain English
+    #[command(after_help = "Examples:\n  ogre explain hello.bf")]
+    Explain(ExplainArgs),
+    /// Generate shell completion scripts
+    #[command(
+        after_help = "Examples:\n  ogre completions bash\n  ogre completions zsh\n  ogre completions fish"
+    )]
+    Completions(CompletionsArgs),
 }
 
 // ---- Per-subcommand arg structs ----
@@ -155,6 +171,9 @@ struct CompileArgs {
     /// Compilation target: "native" (default) or "wasm"
     #[arg(long, default_value = "native")]
     target: String,
+    /// Tape size for WASM compilation (default 30000)
+    #[arg(long)]
+    tape_size: Option<usize>,
 }
 
 #[derive(Args)]
@@ -229,6 +248,15 @@ struct TestArgs {
     /// Show verbose per-test output
     #[arg(long)]
     verbose: bool,
+    /// Filter tests by name pattern (substring match)
+    #[arg(long)]
+    filter: Option<String>,
+    /// Output results in JUnit XML format
+    #[arg(long)]
+    junit: Option<String>,
+    /// Run tests in parallel
+    #[arg(long)]
+    parallel: bool,
 }
 
 #[derive(Args)]
@@ -299,6 +327,37 @@ struct TraceArgs {
     /// Print trace every N instructions (default: every instruction)
     #[arg(long, default_value = "1")]
     every: usize,
+}
+
+#[derive(Args)]
+struct MinifyArgs {
+    /// Path to the brainfuck file
+    file: String,
+    /// Output file (prints to stdout if omitted)
+    #[arg(short = 'o', long)]
+    output: Option<String>,
+    /// Preprocess the file before minifying (expand @fn/@call directives)
+    #[arg(long)]
+    preprocess: bool,
+}
+
+#[derive(Args)]
+struct CleanArgs {
+    /// Show which files are removed
+    #[arg(long)]
+    verbose: bool,
+}
+
+#[derive(Args)]
+struct ExplainArgs {
+    /// Path to the brainfuck file
+    file: String,
+}
+
+#[derive(Args)]
+struct CompletionsArgs {
+    /// Shell to generate completions for
+    shell: String,
 }
 
 #[derive(Subcommand)]
@@ -416,12 +475,13 @@ fn run(cli: Cli) -> Result<()> {
                     (proj.entry_path(&base), deps)
                 }
             };
+            let tape_size = args.tape_size.unwrap_or(30_000);
             match args.target.as_str() {
                 "wasm" => {
                     compile_wasm::compile_to_wasm(
                         &file,
                         args.output.as_deref(),
-                        30_000,
+                        tape_size,
                         verbosity,
                     )?;
                 }
@@ -591,11 +651,23 @@ fn run(cli: Cli) -> Result<()> {
             } else {
                 verbosity
             };
+            let test_opts = test_runner::TestOptions {
+                filter: args.filter,
+                junit_output: args.junit,
+                parallel: args.parallel,
+            };
             match args.test_file {
-                Some(f) => test_runner::run_tests_ex(Path::new(&f), test_verbosity)?,
+                Some(f) => {
+                    test_runner::run_tests_with_opts(Path::new(&f), test_verbosity, &test_opts)?
+                }
                 None => {
                     let (proj, base) = require_project()?;
-                    test_runner::run_project_tests_ex(&proj, &base, test_verbosity)?;
+                    test_runner::run_project_tests_with_opts(
+                        &proj,
+                        &base,
+                        test_verbosity,
+                        &test_opts,
+                    )?;
                 }
             }
         }
@@ -731,6 +803,43 @@ fn run(cli: Cli) -> Result<()> {
                 stdlib::show_module(&args.module)?;
             }
         },
+
+        Commands::Minify(args) => {
+            minify::minify_and_output(
+                Path::new(&args.file),
+                args.output.as_deref(),
+                args.preprocess,
+            )?;
+        }
+
+        Commands::Clean(args) => {
+            let base = std::env::current_dir()?;
+            let verbose = args.verbose || verbosity.is_verbose();
+            let removed = clean::clean(&base, verbose)?;
+            if !verbosity.is_quiet() {
+                if removed > 0 {
+                    println!("Cleaned {} artifact(s).", removed);
+                } else {
+                    println!("Nothing to clean.");
+                }
+            }
+        }
+
+        Commands::Explain(args) => {
+            let explanation = explain::explain_file(Path::new(&args.file))?;
+            println!("{}", explanation);
+        }
+
+        Commands::Completions(args) => {
+            let shell: clap_complete::Shell = args.shell.parse().map_err(|_| {
+                anyhow::anyhow!(
+                    "unknown shell {:?}. Use: bash, zsh, fish, powershell, elvish",
+                    args.shell
+                )
+            })?;
+            let mut cmd = Cli::command();
+            clap_complete::generate(shell, &mut cmd, "ogre", &mut std::io::stdout());
+        }
 
         Commands::Generate(gen) => match gen {
             GenerateCommands::Helloworld(args) => {

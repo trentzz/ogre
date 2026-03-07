@@ -20,6 +20,16 @@ pub enum Op {
     /// Move current cell's value by subtracting it from cell at `data_ptr + offset`.
     /// Recognized from patterns like `[->-<]` (MoveSub(1)).
     MoveSub(isize),
+    /// Set current cell to a specific value (replaces Clear + Add sequences).
+    Set(u8),
+    /// Scan right until a zero cell is found: `[>]`.
+    ScanRight,
+    /// Scan left until a zero cell is found: `[<]`.
+    ScanLeft,
+    /// Multiply-move: multiply current cell by factor and add to cell at offset.
+    /// `[->+++<]` becomes MultiplyMove(1, 3). Zeroes current cell.
+    /// Vec contains (offset, factor) pairs for multi-target multiply moves.
+    MultiplyMove(Vec<(isize, u8)>),
 }
 
 /// A compiled brainfuck program represented as a sequence of IR operations.
@@ -96,8 +106,10 @@ impl Program {
     pub fn optimize(&mut self) {
         self.optimize_clear_idiom();
         self.optimize_move_idiom();
+        self.optimize_scan_idiom();
+        self.optimize_multiply_move();
         self.optimize_cancellation();
-        self.optimize_dead_store();
+        self.optimize_set_idiom();
         self.reindex_jumps();
     }
 
@@ -170,6 +182,45 @@ impl Program {
                         out.push('-');
                         for _ in 0..offset.unsigned_abs() {
                             out.push('>');
+                        }
+                    }
+                    out.push(']');
+                }
+                Op::Set(n) => {
+                    out.push_str("[-]");
+                    for _ in 0..*n {
+                        out.push('+');
+                    }
+                }
+                Op::ScanRight => {
+                    out.push_str("[>]");
+                }
+                Op::ScanLeft => {
+                    out.push_str("[<]");
+                }
+                Op::MultiplyMove(targets) => {
+                    out.push_str("[-");
+                    for (offset, factor) in targets {
+                        if *offset > 0 {
+                            for _ in 0..*offset {
+                                out.push('>');
+                            }
+                        } else {
+                            for _ in 0..offset.unsigned_abs() {
+                                out.push('<');
+                            }
+                        }
+                        for _ in 0..*factor {
+                            out.push('+');
+                        }
+                        if *offset > 0 {
+                            for _ in 0..*offset {
+                                out.push('<');
+                            }
+                        } else {
+                            for _ in 0..offset.unsigned_abs() {
+                                out.push('>');
+                            }
                         }
                     }
                     out.push(']');
@@ -348,18 +399,125 @@ impl Program {
         }
     }
 
-    /// Remove Clear before Add(n) — the Clear is redundant if immediately
-    /// followed by an Add that sets the value.
-    fn optimize_dead_store(&mut self) {
+    /// Replace Clear + Add(n) with Set(n), and standalone Clear with Set(0).
+    fn optimize_set_idiom(&mut self) {
         let mut i = 0;
-        while i + 1 < self.ops.len() {
-            if self.ops[i] == Op::Clear && matches!(self.ops[i + 1], Op::Add(_)) {
-                self.ops.remove(i);
-                // Don't advance — check from same position
-            } else {
+        while i < self.ops.len() {
+            if self.ops[i] == Op::Clear {
+                if i + 1 < self.ops.len() {
+                    if let Op::Add(n) = self.ops[i + 1] {
+                        self.ops.splice(i..i + 2, std::iter::once(Op::Set(n)));
+                        continue;
+                    }
+                }
+                self.ops[i] = Op::Set(0);
+            }
+            i += 1;
+        }
+    }
+
+    /// Detect `[>]` and `[<]` scan patterns.
+    fn optimize_scan_idiom(&mut self) {
+        let mut i = 0;
+        while i + 2 < self.ops.len() {
+            if matches!(self.ops[i], Op::JumpIfZero(_))
+                && matches!(self.ops[i + 2], Op::JumpIfNonZero(_))
+            {
+                if self.ops[i + 1] == Op::Right(1) {
+                    self.ops.splice(i..i + 3, std::iter::once(Op::ScanRight));
+                    continue;
+                }
+                if self.ops[i + 1] == Op::Left(1) {
+                    self.ops.splice(i..i + 3, std::iter::once(Op::ScanLeft));
+                    continue;
+                }
+            }
+            i += 1;
+        }
+    }
+
+    /// Detect multiplication loops like `[->+++>++<<]` and replace with MultiplyMove.
+    /// Pattern: JumpIfZero, Sub(1), then pairs of (Right/Left(n), Add(m), Left/Right(n)),
+    /// ending with JumpIfNonZero. The net pointer movement must be zero.
+    fn optimize_multiply_move(&mut self) {
+        let mut i = 0;
+        while i < self.ops.len() {
+            if !matches!(self.ops[i], Op::JumpIfZero(_)) {
                 i += 1;
+                continue;
+            }
+            // Find matching JumpIfNonZero
+            let close = match self.ops[i] {
+                Op::JumpIfZero(t) => t,
+                _ => {
+                    i += 1;
+                    continue;
+                }
+            };
+            if close >= self.ops.len() || !matches!(self.ops[close], Op::JumpIfNonZero(_)) {
+                i += 1;
+                continue;
+            }
+            // Must start with Sub(1)
+            if i + 1 >= close || self.ops[i + 1] != Op::Sub(1) {
+                i += 1;
+                continue;
+            }
+            // Already handled by optimize_move_idiom for simple cases,
+            // only handle multi-target patterns here (more than one target)
+            let body = &self.ops[i + 2..close];
+            if let Some(targets) = Self::parse_multiply_body(body) {
+                // Skip single-target with factor=1, already handled by move_idiom as MoveAdd
+                let dominated_by_move = targets.len() == 1 && targets[0].1 == 1;
+                if !dominated_by_move {
+                    self.ops
+                        .splice(i..close + 1, std::iter::once(Op::MultiplyMove(targets)));
+                    continue;
+                }
+            }
+            i += 1;
+        }
+    }
+
+    /// Parse the body of a potential multiply loop.
+    /// Returns Some(vec of (offset, factor)) if the body is a valid multiply pattern.
+    /// Handles patterns like: Right(1) Add(2) Right(1) Add(3) Left(2)
+    fn parse_multiply_body(body: &[Op]) -> Option<Vec<(isize, u8)>> {
+        let mut targets = Vec::new();
+        let mut current_offset: isize = 0;
+        let mut j = 0;
+
+        while j < body.len() {
+            match &body[j] {
+                Op::Right(n) => {
+                    current_offset += *n as isize;
+                    j += 1;
+                }
+                Op::Left(n) => {
+                    current_offset -= *n as isize;
+                    j += 1;
+                }
+                Op::Add(n) => {
+                    if current_offset == 0 {
+                        return None; // Adding to the loop counter cell is invalid
+                    }
+                    targets.push((current_offset, *n));
+                    j += 1;
+                }
+                _ => return None, // Any other op makes this not a multiply loop
             }
         }
+
+        // Net movement must return to origin
+        if current_offset != 0 {
+            return None;
+        }
+
+        if targets.is_empty() {
+            return None;
+        }
+
+        Some(targets)
     }
 
     /// Reindex all jump targets after ops have been inserted/removed.
@@ -457,7 +615,7 @@ mod tests {
     fn test_clear_idiom() {
         let mut prog = Program::from_source("[-]").unwrap();
         prog.optimize();
-        assert_eq!(prog.ops, vec![Op::Clear]);
+        assert_eq!(prog.ops, vec![Op::Set(0)]);
     }
 
     #[test]
@@ -485,8 +643,8 @@ mod tests {
     fn test_clear_then_add() {
         let mut prog = Program::from_source("[-]+++").unwrap();
         prog.optimize();
-        // Clear + Add(3) -> just Add(3) (dead store optimization)
-        assert_eq!(prog.ops, vec![Op::Add(3)]);
+        // Clear + Add(3) -> Set(3)
+        assert_eq!(prog.ops, vec![Op::Set(3)]);
     }
 
     #[test]
@@ -520,11 +678,10 @@ mod tests {
     fn test_nested_bracket_jump_indices_after_optimize() {
         let mut prog = Program::from_source("[[-]]").unwrap();
         prog.optimize();
-        // [-] becomes Clear, so we get [Clear]
-        // Which is JumpIfZero(?), Clear, JumpIfNonZero(?)
+        // [-] becomes Set(0), so we get [Set(0)]
         assert_eq!(
             prog.ops,
-            vec![Op::JumpIfZero(2), Op::Clear, Op::JumpIfNonZero(0)]
+            vec![Op::JumpIfZero(2), Op::Set(0), Op::JumpIfNonZero(0)]
         );
     }
 
@@ -603,5 +760,79 @@ mod tests {
         let mut prog_opt = Program::from_source(src).unwrap();
         prog_opt.optimize();
         assert!(prog_opt.ops.contains(&Op::MoveAdd(1)));
+    }
+
+    // ---- Set optimization tests ----
+
+    #[test]
+    fn test_set_idiom() {
+        let mut prog = Program::from_source("[-]+++++").unwrap();
+        prog.optimize();
+        assert_eq!(prog.ops, vec![Op::Set(5)]);
+    }
+
+    #[test]
+    fn test_set_zero() {
+        let mut prog = Program::from_source("[-]").unwrap();
+        prog.optimize();
+        assert_eq!(prog.ops, vec![Op::Set(0)]);
+    }
+
+    // ---- Scan optimization tests ----
+
+    #[test]
+    fn test_scan_right() {
+        let mut prog = Program::from_source("[>]").unwrap();
+        prog.optimize();
+        assert_eq!(prog.ops, vec![Op::ScanRight]);
+    }
+
+    #[test]
+    fn test_scan_left() {
+        let mut prog = Program::from_source("[<]").unwrap();
+        prog.optimize();
+        assert_eq!(prog.ops, vec![Op::ScanLeft]);
+    }
+
+    #[test]
+    fn test_scan_right_to_bf() {
+        let prog = Program {
+            ops: vec![Op::ScanRight],
+        };
+        assert_eq!(prog.to_bf_string(), "[>]");
+    }
+
+    #[test]
+    fn test_scan_left_to_bf() {
+        let prog = Program {
+            ops: vec![Op::ScanLeft],
+        };
+        assert_eq!(prog.to_bf_string(), "[<]");
+    }
+
+    // ---- MultiplyMove tests ----
+
+    #[test]
+    fn test_multiply_move_double() {
+        // [->++>+++<<] should be detected as MultiplyMove
+        let mut prog = Program::from_source("[->++>+++<<]").unwrap();
+        prog.optimize();
+        assert!(prog.ops.iter().any(|op| matches!(op, Op::MultiplyMove(_))));
+    }
+
+    #[test]
+    fn test_set_to_bf() {
+        let prog = Program {
+            ops: vec![Op::Set(3)],
+        };
+        assert_eq!(prog.to_bf_string(), "[-]+++");
+    }
+
+    #[test]
+    fn test_set_zero_to_bf() {
+        let prog = Program {
+            ops: vec![Op::Set(0)],
+        };
+        assert_eq!(prog.to_bf_string(), "[-]");
     }
 }

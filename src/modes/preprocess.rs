@@ -157,6 +157,8 @@ pub struct Preprocessor {
     source_map: Option<SourceMap>,
     /// Whether to build a source map during processing.
     build_map: bool,
+    /// Defined symbols for @ifdef/@ifndef conditional compilation.
+    defines: HashSet<String>,
 }
 
 impl Preprocessor {
@@ -169,6 +171,7 @@ impl Preprocessor {
             fn_origins: HashMap::new(),
             source_map: None,
             build_map: false,
+            defines: HashSet::new(),
         }
     }
 
@@ -181,6 +184,7 @@ impl Preprocessor {
             fn_origins: HashMap::new(),
             source_map: Some(SourceMap::new()),
             build_map: true,
+            defines: HashSet::new(),
         }
     }
 
@@ -490,6 +494,92 @@ impl Preprocessor {
                                 }
                             }
                         }
+                    }
+
+                    "define" => {
+                        skip_spaces(&chars, &mut i);
+                        col = Self::update_col_after_skip(source, i, line);
+                        let name = take_identifier(&chars, &mut i);
+                        if name.is_empty() {
+                            bail!("@define: missing symbol name");
+                        }
+                        self.defines.insert(name);
+                    }
+
+                    "repeat" => {
+                        skip_spaces(&chars, &mut i);
+                        col = Self::update_col_after_skip(source, i, line);
+                        let mut num_str = String::new();
+                        while i < chars.len() && chars[i].is_ascii_digit() {
+                            num_str.push(chars[i]);
+                            i += 1;
+                        }
+                        if num_str.is_empty() {
+                            bail!("@repeat: expected numeric count");
+                        }
+                        let count: usize = num_str
+                            .parse()
+                            .map_err(|_| anyhow::anyhow!("@repeat: invalid count {:?}", num_str))?;
+                        skip_whitespace(&chars, &mut i);
+                        let (new_line, new_col) = Self::compute_line_col(source, i);
+                        line = new_line;
+                        col = new_col;
+                        if i >= chars.len() || chars[i] != '{' {
+                            bail!("@repeat: expected '{{' after count");
+                        }
+                        i += 1;
+                        let body = take_brace_body(&chars, &mut i)
+                            .map_err(|e| anyhow::anyhow!("@repeat: {}", e))?;
+                        let (new_line2, new_col2) = Self::compute_line_col(source, i);
+                        line = new_line2;
+                        col = new_col2;
+                        let base_dir = current_file.parent().unwrap_or(Path::new("."));
+                        for _ in 0..count {
+                            let expanded = self.collect(&body, base_dir)?;
+                            top_level.push_str(&expanded);
+                        }
+                    }
+
+                    "ifdef" | "ifndef" => {
+                        let is_ifdef = keyword == "ifdef";
+                        skip_spaces(&chars, &mut i);
+                        let name = take_identifier(&chars, &mut i);
+                        if name.is_empty() {
+                            bail!("@{}: missing symbol name", keyword);
+                        }
+                        let defined =
+                            self.defines.contains(&name) || self.constants.contains_key(&name);
+                        let condition = if is_ifdef { defined } else { !defined };
+                        let (true_branch, false_branch) =
+                            Self::read_conditional_branches(&chars, &mut i)?;
+                        let branch = if condition {
+                            &true_branch
+                        } else {
+                            &false_branch
+                        };
+                        let base_dir = current_file.parent().unwrap_or(Path::new("."));
+                        let expanded = self.collect(branch, base_dir)?;
+                        top_level.push_str(&expanded);
+                    }
+
+                    "if" => {
+                        skip_spaces(&chars, &mut i);
+                        let name = take_identifier(&chars, &mut i);
+                        if name.is_empty() {
+                            bail!("@if: missing constant name");
+                        }
+                        let value = self.constants.get(&name).copied().unwrap_or(0);
+                        let condition = value != 0;
+                        let (true_branch, false_branch) =
+                            Self::read_conditional_branches(&chars, &mut i)?;
+                        let branch = if condition {
+                            &true_branch
+                        } else {
+                            &false_branch
+                        };
+                        let base_dir = current_file.parent().unwrap_or(Path::new("."));
+                        let expanded = self.collect(branch, base_dir)?;
+                        top_level.push_str(&expanded);
                     }
 
                     other => {
@@ -829,6 +919,83 @@ impl Preprocessor {
                         }
                     }
 
+                    "define" => {
+                        skip_spaces(&chars, &mut i);
+                        let name = take_identifier(&chars, &mut i);
+                        if name.is_empty() {
+                            bail!("@define: missing symbol name");
+                        }
+                        self.defines.insert(name);
+                    }
+
+                    "repeat" => {
+                        skip_spaces(&chars, &mut i);
+                        let mut num_str = String::new();
+                        while i < chars.len() && chars[i].is_ascii_digit() {
+                            num_str.push(chars[i]);
+                            i += 1;
+                        }
+                        if num_str.is_empty() {
+                            bail!("@repeat: expected numeric count");
+                        }
+                        let count: usize = num_str
+                            .parse()
+                            .map_err(|_| anyhow::anyhow!("@repeat: invalid count {:?}", num_str))?;
+                        skip_whitespace(&chars, &mut i);
+                        if i >= chars.len() || chars[i] != '{' {
+                            bail!("@repeat: expected '{{' after count");
+                        }
+                        i += 1; // skip '{'
+                        let body = take_brace_body(&chars, &mut i)
+                            .map_err(|e| anyhow::anyhow!("@repeat: {}", e))?;
+                        for _ in 0..count {
+                            // Recursively process the body for nested directives
+                            let expanded = self.collect(&body, base_dir)?;
+                            top_level.push_str(&expanded);
+                        }
+                    }
+
+                    "ifdef" | "ifndef" => {
+                        let is_ifdef = keyword == "ifdef";
+                        skip_spaces(&chars, &mut i);
+                        let name = take_identifier(&chars, &mut i);
+                        if name.is_empty() {
+                            bail!("@{}: missing symbol name", keyword);
+                        }
+                        let defined =
+                            self.defines.contains(&name) || self.constants.contains_key(&name);
+                        let condition = if is_ifdef { defined } else { !defined };
+                        // Read until @else or @endif, collecting true/false branches
+                        let (true_branch, false_branch) =
+                            Self::read_conditional_branches(&chars, &mut i)?;
+                        let branch = if condition {
+                            &true_branch
+                        } else {
+                            &false_branch
+                        };
+                        let expanded = self.collect(branch, base_dir)?;
+                        top_level.push_str(&expanded);
+                    }
+
+                    "if" => {
+                        skip_spaces(&chars, &mut i);
+                        let name = take_identifier(&chars, &mut i);
+                        if name.is_empty() {
+                            bail!("@if: missing constant name");
+                        }
+                        let value = self.constants.get(&name).copied().unwrap_or(0);
+                        let condition = value != 0;
+                        let (true_branch, false_branch) =
+                            Self::read_conditional_branches(&chars, &mut i)?;
+                        let branch = if condition {
+                            &true_branch
+                        } else {
+                            &false_branch
+                        };
+                        let expanded = self.collect(branch, base_dir)?;
+                        top_level.push_str(&expanded);
+                    }
+
                     other => {
                         return Err(OgreError::UnknownDirective(other.to_string()).into());
                     }
@@ -840,6 +1007,79 @@ impl Preprocessor {
         }
 
         Ok(top_level)
+    }
+
+    /// Read conditional branches for @ifdef/@ifndef/@if.
+    /// Reads until @endif, optionally splitting at @else.
+    fn read_conditional_branches(chars: &[char], i: &mut usize) -> Result<(String, String)> {
+        let mut true_branch = String::new();
+        let mut false_branch = String::new();
+        let mut in_else = false;
+        let mut depth = 1; // Track nested @ifdef/@if
+
+        while *i < chars.len() {
+            if chars[*i] == '@' && *i + 1 < chars.len() && chars[*i + 1].is_alphabetic() {
+                let save = *i;
+                *i += 1; // skip '@'
+                let kw = take_identifier(chars, i);
+                match kw.as_str() {
+                    "ifdef" | "ifndef" | "if" => {
+                        depth += 1;
+                        // Push directive text to current branch
+                        let text = &chars[save..*i];
+                        let s: String = text.iter().collect();
+                        if in_else {
+                            false_branch.push_str(&s);
+                        } else {
+                            true_branch.push_str(&s);
+                        }
+                    }
+                    "else" if depth == 1 => {
+                        in_else = true;
+                    }
+                    "else" => {
+                        let text = &chars[save..*i];
+                        let s: String = text.iter().collect();
+                        if in_else {
+                            false_branch.push_str(&s);
+                        } else {
+                            true_branch.push_str(&s);
+                        }
+                    }
+                    "endif" => {
+                        depth -= 1;
+                        if depth == 0 {
+                            return Ok((true_branch, false_branch));
+                        }
+                        let text = &chars[save..*i];
+                        let s: String = text.iter().collect();
+                        if in_else {
+                            false_branch.push_str(&s);
+                        } else {
+                            true_branch.push_str(&s);
+                        }
+                    }
+                    _ => {
+                        let text = &chars[save..*i];
+                        let s: String = text.iter().collect();
+                        if in_else {
+                            false_branch.push_str(&s);
+                        } else {
+                            true_branch.push_str(&s);
+                        }
+                    }
+                }
+            } else {
+                if in_else {
+                    false_branch.push(chars[*i]);
+                } else {
+                    true_branch.push(chars[*i]);
+                }
+                *i += 1;
+            }
+        }
+
+        bail!("@ifdef/@if: missing @endif")
     }
 
     // ---- Pass 2: expand ----
@@ -1271,6 +1511,150 @@ mod tests {
                 .unwrap();
         assert_eq!(expanded, "");
         assert!(map.is_empty());
+    }
+
+    // ---- @define / @ifdef / @ifndef tests ----
+
+    #[test]
+    fn test_define_ifdef_true_branch() {
+        let src = "@define DEBUG\n@ifdef DEBUG\n+++\n@endif";
+        let out = process(src).unwrap();
+        assert_eq!(out.chars().filter(|c| *c == '+').count(), 3);
+    }
+
+    #[test]
+    fn test_ifdef_false_when_not_defined() {
+        let src = "@ifdef MISSING\n+++\n@endif";
+        let out = process(src).unwrap();
+        assert_eq!(out.chars().filter(|c| *c == '+').count(), 0);
+    }
+
+    #[test]
+    fn test_ifndef_true_when_not_defined() {
+        let src = "@ifndef MISSING\n+++\n@endif";
+        let out = process(src).unwrap();
+        assert_eq!(out.chars().filter(|c| *c == '+').count(), 3);
+    }
+
+    #[test]
+    fn test_ifndef_false_when_defined() {
+        let src = "@define X\n@ifndef X\n+++\n@endif";
+        let out = process(src).unwrap();
+        assert_eq!(out.chars().filter(|c| *c == '+').count(), 0);
+    }
+
+    #[test]
+    fn test_ifdef_else_true() {
+        let src = "@define FLAG\n@ifdef FLAG\n+++\n@else\n---\n@endif";
+        let out = process(src).unwrap();
+        assert_eq!(out.chars().filter(|c| *c == '+').count(), 3);
+        assert_eq!(out.chars().filter(|c| *c == '-').count(), 0);
+    }
+
+    #[test]
+    fn test_ifdef_else_false() {
+        let src = "@ifdef FLAG\n+++\n@else\n---\n@endif";
+        let out = process(src).unwrap();
+        assert_eq!(out.chars().filter(|c| *c == '+').count(), 0);
+        assert_eq!(out.chars().filter(|c| *c == '-').count(), 3);
+    }
+
+    #[test]
+    fn test_ifdef_with_const_defined() {
+        // @const also counts as a define for @ifdef
+        let src = "@const N 5\n@ifdef N\n@use N\n@endif";
+        let out = process(src).unwrap();
+        assert_eq!(out.chars().filter(|c| *c == '+').count(), 5);
+    }
+
+    #[test]
+    fn test_ifdef_missing_endif_errors() {
+        let src = "@define X\n@ifdef X\n+++";
+        assert!(process(src).is_err());
+    }
+
+    // ---- @if tests ----
+
+    #[test]
+    fn test_if_nonzero_true() {
+        let src = "@const MODE 1\n@if MODE\n+++\n@endif";
+        let out = process(src).unwrap();
+        assert_eq!(out.chars().filter(|c| *c == '+').count(), 3);
+    }
+
+    #[test]
+    fn test_if_zero_false() {
+        let src = "@const MODE 0\n@if MODE\n+++\n@endif";
+        let out = process(src).unwrap();
+        assert_eq!(out.chars().filter(|c| *c == '+').count(), 0);
+    }
+
+    #[test]
+    fn test_if_undefined_treated_as_zero() {
+        let src = "@if UNDEF\n+++\n@endif";
+        let out = process(src).unwrap();
+        assert_eq!(out.chars().filter(|c| *c == '+').count(), 0);
+    }
+
+    #[test]
+    fn test_if_else() {
+        let src = "@const X 0\n@if X\n+++\n@else\n---\n@endif";
+        let out = process(src).unwrap();
+        assert_eq!(out.chars().filter(|c| *c == '+').count(), 0);
+        assert_eq!(out.chars().filter(|c| *c == '-').count(), 3);
+    }
+
+    // ---- @repeat tests ----
+
+    #[test]
+    fn test_repeat_basic() {
+        let src = "@repeat 3 { + }";
+        let out = process(src).unwrap();
+        assert_eq!(out.chars().filter(|c| *c == '+').count(), 3);
+    }
+
+    #[test]
+    fn test_repeat_zero() {
+        let src = "@repeat 0 { +++ }";
+        let out = process(src).unwrap();
+        assert_eq!(out.chars().filter(|c| *c == '+').count(), 0);
+    }
+
+    #[test]
+    fn test_repeat_with_bf_code() {
+        let src = "@repeat 5 { >+ }";
+        let out = process(src).unwrap();
+        assert_eq!(out.chars().filter(|c| *c == '>').count(), 5);
+        assert_eq!(out.chars().filter(|c| *c == '+').count(), 5);
+    }
+
+    #[test]
+    fn test_repeat_nested_directives() {
+        let src = "@fn inc { + }\n@repeat 4 { @call inc }";
+        let out = process(src).unwrap();
+        assert_eq!(out.chars().filter(|c| *c == '+').count(), 4);
+    }
+
+    #[test]
+    fn test_repeat_missing_brace_errors() {
+        assert!(process("@repeat 3 +++").is_err());
+    }
+
+    // ---- Nested conditionals ----
+
+    #[test]
+    fn test_nested_ifdef() {
+        let src = "@define A\n@define B\n@ifdef A\n@ifdef B\n+++\n@endif\n@endif";
+        let out = process(src).unwrap();
+        assert_eq!(out.chars().filter(|c| *c == '+').count(), 3);
+    }
+
+    #[test]
+    fn test_nested_ifdef_inner_false() {
+        let src = "@define A\n@ifdef A\n@ifdef B\n+++\n@endif\n---\n@endif";
+        let out = process(src).unwrap();
+        assert_eq!(out.chars().filter(|c| *c == '+').count(), 0);
+        assert_eq!(out.chars().filter(|c| *c == '-').count(), 3);
     }
 
     #[test]
